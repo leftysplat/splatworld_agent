@@ -28,30 +28,19 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 ### Quick Install
 
 ```bash
-# One-line install (clones to ~/.local/share/splatworld_agent)
+# One-line install (installs to ~/.claude/splatworld-agent)
 curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld_agent/main/install.sh | bash
 ```
 
-The installer will:
-1. Prompt for install location (default: `~/.local/share/splatworld_agent`)
-2. Clone the repository
-3. Install the Python package
-4. Set up Claude Code integration (symlinks commands to `~/.claude/commands/`)
-
-### Manual Install
-
+Or clone and run:
 ```bash
-# Clone and install (stays in current directory after)
 git clone https://github.com/leftysplat/splatworld_agent.git && (cd splatworld_agent && ./install.sh)
 ```
 
-Or step by step:
-```bash
-git clone https://github.com/leftysplat/splatworld_agent.git
-cd splatworld_agent
-./install.sh
-cd ..
-```
+The installer will:
+1. Install to `~/.claude/splatworld-agent/` (like GSD)
+2. Set up commands at `~/.claude/commands/splatworld-agent/`
+3. Available from **any project directory**
 
 ### Updating
 

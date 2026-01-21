@@ -36,8 +36,8 @@ YELLOW='\033[0;33m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-# Default install location
-DEFAULT_INSTALL_DIR="$HOME/.local/share/splatworld_agent"
+# Default install location (inside ~/.claude like GSD)
+DEFAULT_INSTALL_DIR="$HOME/.claude/splatworld-agent"
 CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 
 echo ""
@@ -90,85 +90,53 @@ detect_mode() {
 
 # Prompt for install location
 prompt_location() {
-    if [ "$AUTO_YES" = true ]; then
-        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-        echo -e "  ${DIM}Auto-selecting default: $INSTALL_DIR${RESET}"
-        return
-    fi
-
-    echo -e "  ${YELLOW}Where would you like to install?${RESET}"
-    echo ""
-    echo -e "  ${CYAN}1${RESET}) Default ${DIM}($DEFAULT_INSTALL_DIR)${RESET}"
-    echo -e "  ${CYAN}2${RESET}) Current directory ${DIM}($(pwd)/splatworld_agent)${RESET}"
-    echo -e "  ${CYAN}3${RESET}) Custom location"
-    echo ""
-    read -p "  Choice [1]: " choice
-    choice=${choice:-1}
-
-    case $choice in
-        1)
-            INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-            ;;
-        2)
-            INSTALL_DIR="$(pwd)/splatworld_agent"
-            ;;
-        3)
-            read -p "  Enter path: " custom_path
-            INSTALL_DIR="${custom_path/#\~/$HOME}"
-            ;;
-        *)
-            INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-            ;;
-    esac
+    # Always install to ~/.claude/splatworld-agent for global access
+    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    echo -e "  ${DIM}Installing to: $INSTALL_DIR${RESET}"
 }
 
-# Clone or copy the repo
+# Clone or copy the repo to ~/.claude/splatworld-agent
 install_repo() {
-    if [ "$MODE" = "download" ]; then
-        echo -e "  Cloning repository..."
+    local SOURCE_DIR=""
 
-        if [ -d "$INSTALL_DIR" ]; then
-            echo -e "  ${YELLOW}Directory exists: $INSTALL_DIR${RESET}"
-            if [ "$AUTO_YES" = true ]; then
-                update="Y"
-            else
-                read -p "  Update existing installation? [Y/n]: " update
-                update=${update:-Y}
-            fi
-            if [[ $update =~ ^[Yy] ]]; then
-                cd "$INSTALL_DIR"
-                git pull --ff-only
-                echo -e "  ${GREEN}✓${RESET} Updated repository"
-            fi
+    if [ "$MODE" = "download" ]; then
+        # Clone to temp location first, then copy
+        echo -e "  Cloning repository..."
+        TEMP_DIR=$(mktemp -d)
+        git clone --quiet https://github.com/leftysplat/splatworld_agent.git "$TEMP_DIR/splatworld_agent"
+        SOURCE_DIR="$TEMP_DIR/splatworld_agent"
+        echo -e "  ${GREEN}✓${RESET} Cloned repository"
+    else
+        # Use current repo as source
+        SOURCE_DIR="$REPO_DIR"
+    fi
+
+    # Copy/update to install location
+    if [ -d "$INSTALL_DIR" ]; then
+        echo -e "  ${DIM}Updating existing installation...${RESET}"
+        # Preserve .git if it exists for updates
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            cd "$INSTALL_DIR"
+            git pull --ff-only 2>/dev/null || {
+                # If pull fails, do a fresh copy
+                rm -rf "$INSTALL_DIR"
+                cp -r "$SOURCE_DIR" "$INSTALL_DIR"
+            }
+            echo -e "  ${GREEN}✓${RESET} Updated installation"
         else
-            mkdir -p "$(dirname "$INSTALL_DIR")"
-            git clone https://github.com/leftysplat/splatworld_agent.git "$INSTALL_DIR"
-            echo -e "  ${GREEN}✓${RESET} Cloned repository"
+            rm -rf "$INSTALL_DIR"
+            cp -r "$SOURCE_DIR" "$INSTALL_DIR"
+            echo -e "  ${GREEN}✓${RESET} Reinstalled to $INSTALL_DIR"
         fi
     else
-        # Running from within repo - use current location or copy
-        if [ "$REPO_DIR" != "$INSTALL_DIR" ]; then
-            if [ -d "$INSTALL_DIR" ]; then
-                echo -e "  ${YELLOW}Directory exists: $INSTALL_DIR${RESET}"
-                if [ "$AUTO_YES" = true ]; then
-                    replace="Y"
-                else
-                    read -p "  Replace? [y/N]: " replace
-                fi
-                if [[ $replace =~ ^[Yy] ]]; then
-                    rm -rf "$INSTALL_DIR"
-                    cp -r "$REPO_DIR" "$INSTALL_DIR"
-                    echo -e "  ${GREEN}✓${RESET} Copied to $INSTALL_DIR"
-                fi
-            else
-                mkdir -p "$(dirname "$INSTALL_DIR")"
-                cp -r "$REPO_DIR" "$INSTALL_DIR"
-                echo -e "  ${GREEN}✓${RESET} Copied to $INSTALL_DIR"
-            fi
-        else
-            INSTALL_DIR="$REPO_DIR"
-            echo -e "  ${GREEN}✓${RESET} Using current directory"
-        fi
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        cp -r "$SOURCE_DIR" "$INSTALL_DIR"
+        echo -e "  ${GREEN}✓${RESET} Installed to $INSTALL_DIR"
+    fi
+
+    # Clean up temp dir if used
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
     fi
 }
 
@@ -235,16 +203,17 @@ print_done() {
     echo ""
     echo -e "  ${GREEN}Installation complete!${RESET}"
     echo ""
-    echo -e "  ${YELLOW}Installed to:${RESET} $INSTALL_DIR"
+    echo -e "  ${YELLOW}Installed to:${RESET} ~/.claude/splatworld-agent"
     echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld-agent"
+    echo -e "  ${YELLOW}Available from:${RESET} Any project directory"
     echo ""
     echo -e "  ${YELLOW}Next steps:${RESET}"
     echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
     echo -e "  2. Run ${CYAN}/splatworld-agent:help${RESET} to see available commands"
-    echo -e "  3. Run ${CYAN}/splatworld-agent:init${RESET} to initialize a project"
+    echo -e "  3. Run ${CYAN}/splatworld-agent:init${RESET} in any project to start"
     echo ""
     echo -e "  ${YELLOW}To update later:${RESET}"
-    echo -e "  Run ${CYAN}/splatworld-agent:update${RESET} in Claude Code"
+    echo -e "  Run ${CYAN}/splatworld-agent:update${RESET} from anywhere"
     echo ""
 }
 
@@ -253,30 +222,9 @@ main() {
     check_requirements
     detect_mode
 
-    if [ "$MODE" = "local" ]; then
-        # Running from repo - ask if they want to install here or elsewhere
-        echo -e "  ${DIM}Running from: $REPO_DIR${RESET}"
-        echo ""
-
-        if [ "$AUTO_YES" = true ]; then
-            echo -e "  ${DIM}Auto-selecting current location${RESET}"
-            INSTALL_DIR="$REPO_DIR"
-        else
-            read -p "  Install from current location? [Y/n]: " use_current
-            use_current=${use_current:-Y}
-
-            if [[ $use_current =~ ^[Yy] ]]; then
-                INSTALL_DIR="$REPO_DIR"
-            else
-                prompt_location
-                install_repo
-            fi
-        fi
-    else
-        prompt_location
-        install_repo
-    fi
-
+    # Always install to ~/.claude/splatworld-agent
+    prompt_location
+    install_repo
     install_python
     setup_claude
     print_done
