@@ -336,6 +336,93 @@ def feedback(feedback_text: tuple, generation: str):
 
 
 @main.command()
+@click.argument("image_nums", nargs=-1, type=int, required=True)
+@click.argument("rating", type=click.Choice(["++", "+", "-", "--"]))
+def rate(image_nums: tuple, rating: str):
+    """Rate images by number from the current batch.
+
+    Examples:
+        rate 1 ++      Rate image 1 as love
+        rate 3 -       Rate image 3 as not great
+        rate 2 5 +     Rate images 2 and 5 as good
+
+    Rating scale:
+        ++  love it (will be converted to splat)
+        +   like it
+        -   not great
+        --  hate it
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Get current batch info for validation
+    if not manager.current_session_path.exists():
+        console.print("[red]No batch context found.[/red]")
+        console.print("[yellow]Generate a batch first: splatworld-agent batch \"your prompt\"[/yellow]")
+        sys.exit(1)
+
+    # Read batch size for validation
+    try:
+        with open(manager.current_session_path) as f:
+            session = json.load(f)
+        batch_size = session.get("batch_size", 0)
+    except (json.JSONDecodeError, IOError):
+        console.print("[red]Error reading batch context.[/red]")
+        sys.exit(1)
+
+    if batch_size == 0:
+        console.print("[red]No images in current batch.[/red]")
+        sys.exit(1)
+
+    # Validate all image numbers first
+    invalid_nums = [n for n in image_nums if n < 1 or n > batch_size]
+    if invalid_nums:
+        console.print(f"[red]Invalid image number(s): {invalid_nums}[/red]")
+        console.print(f"[yellow]Valid range: 1-{batch_size}[/yellow]")
+        sys.exit(1)
+
+    # Rate each image
+    rating_display = {
+        "++": "[green]Love it![/green]",
+        "+": "[green]Good[/green]",
+        "-": "[yellow]Not great[/yellow]",
+        "--": "[red]Hate it[/red]",
+    }
+
+    for image_num in image_nums:
+        gen_id = manager.resolve_image_number(image_num)
+
+        if not gen_id:
+            console.print(f"[red]Could not resolve image {image_num}.[/red]")
+            continue
+
+        # Create and save feedback
+        fb = Feedback(
+            generation_id=gen_id,
+            timestamp=datetime.now(),
+            rating=rating,
+        )
+        manager.add_feedback(fb)
+
+        console.print(f"Image {image_num}: {rating_display[rating]}")
+
+    # Show quick stats
+    if len(image_nums) > 1:
+        console.print(f"\n[dim]Rated {len(image_nums)} images as {rating}[/dim]")
+
+    # Suggest next steps
+    profile = manager.load_profile()
+    unprocessed = len(manager.get_unprocessed_feedback())
+    config = Config.load()
+    if unprocessed >= config.defaults.auto_learn_threshold:
+        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn'.[/cyan]")
+
+
+@main.command()
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
 @click.option("--cycles", "-c", default=1, help="Number of cycles (generate, review, learn)")
