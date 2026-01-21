@@ -447,15 +447,24 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
 
             img_gen.close()
 
+            # Store batch context for numbered references
+            manager.set_current_batch(batch_id, batch_gen_ids)
+
             console.print(f"\n[bold green]Batch complete![/bold green] Generated {count} images.")
             console.print(f"[dim]Batch ID: {batch_id}[/dim]")
 
-            # Show review instructions
-            console.print("\n[bold]Review your images:[/bold]")
-            console.print(f"  [cyan]splatworld-agent review[/cyan] - Interactive review")
-            console.print(f"  [cyan]splatworld-agent review --batch {batch_id}[/cyan] - Review this batch")
-            console.print("\n[bold]After review:[/bold]")
-            console.print(f"  [cyan]splatworld-agent convert[/cyan] - Convert loved images to 3D splats")
+            # Show numbered images summary
+            console.print("\n[bold]Your images:[/bold]")
+            for i, gen_id in enumerate(batch_gen_ids, start=1):
+                gen = manager.get_generation(gen_id)
+                if gen and gen.source_image_path:
+                    console.print(f"  [cyan]{i}[/cyan] - {gen.source_image_path}")
+
+            # Show rating instructions with new syntax
+            console.print("\n[bold]Rate your images:[/bold]")
+            console.print("  [cyan]splatworld-agent rate 1 ++[/cyan]  - Love image 1")
+            console.print("  [cyan]splatworld-agent rate 3 -[/cyan]   - Dislike image 3")
+            console.print("  [cyan]splatworld-agent rate 2 5 +[/cyan] - Like images 2 and 5")
 
             # If more cycles, prompt for review
             if cycle_num < cycles:
@@ -485,7 +494,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
 
     console.print("\n[bold]Batch workflow complete![/bold]")
     console.print("Next steps:")
-    console.print("  1. [cyan]splatworld-agent review[/cyan] - Review and rate images")
+    console.print("  1. [cyan]splatworld-agent rate 1 ++[/cyan] - Rate images by number")
     console.print("  2. [cyan]splatworld-agent learn[/cyan] - Learn from your feedback")
     console.print("  3. [cyan]splatworld-agent convert[/cyan] - Convert favorites to 3D splats")
 
