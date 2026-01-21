@@ -417,15 +417,18 @@ def rate(image_nums: tuple, rating: str):
             console.print(f"[red]Could not resolve image {image_num}.[/red]")
             continue
 
-        # Create and save feedback
+        # Create and save feedback (replaces existing if re-rating)
         fb = Feedback(
             generation_id=gen_id,
             timestamp=datetime.now(),
             rating=rating,
         )
-        manager.add_feedback(fb)
+        was_replaced, old_rating = manager.add_or_replace_feedback(fb)
 
-        console.print(f"Image {image_num}: {rating_display[rating]}")
+        if was_replaced:
+            console.print(f"Image {image_num}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
+        else:
+            console.print(f"Image {image_num}: {rating_display[rating]}")
 
     # Show quick stats
     if len(image_nums) > 1:
