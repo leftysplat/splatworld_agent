@@ -152,6 +152,9 @@ install_python() {
         pip_cmd="pip"
     fi
 
+    # Uninstall any existing installation first (avoids conflicts)
+    $pip_cmd uninstall -y splatworld-agent 2>/dev/null || true
+
     # Try with --user flag for permission issues
     if $pip_cmd install . --user --quiet 2>/dev/null; then
         echo -e "  ${GREEN}✓${RESET} Installed Python package"
