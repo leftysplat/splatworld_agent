@@ -446,3 +446,42 @@ class Feedback:
     @property
     def is_hate(self) -> bool:
         return self.rating == "--"
+
+
+@dataclass
+class Session:
+    """A work session tracking activity."""
+
+    session_id: str
+    started: datetime
+    ended: Optional[datetime] = None
+    summary: str = ""
+    activity: dict = field(default_factory=dict)  # generations, feedback, conversions, learns
+    last_generation_id: Optional[str] = None
+    last_prompt: Optional[str] = None
+    notes: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "started": self.started.isoformat(),
+            "ended": self.ended.isoformat() if self.ended else None,
+            "summary": self.summary,
+            "activity": self.activity,
+            "last_generation_id": self.last_generation_id,
+            "last_prompt": self.last_prompt,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Session":
+        return cls(
+            session_id=data["session_id"],
+            started=datetime.fromisoformat(data["started"]),
+            ended=datetime.fromisoformat(data["ended"]) if data.get("ended") else None,
+            summary=data.get("summary", ""),
+            activity=data.get("activity", {}),
+            last_generation_id=data.get("last_generation_id"),
+            last_prompt=data.get("last_prompt"),
+            notes=data.get("notes"),
+        )

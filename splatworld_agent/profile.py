@@ -3,11 +3,12 @@ Profile management for SplatWorld Agent.
 """
 
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from splatworld_agent.models import TasteProfile, Generation, Feedback, Exemplar
+from splatworld_agent.models import TasteProfile, Generation, Feedback, Exemplar, Session
 from splatworld_agent.config import PROJECT_DIR_NAME
 
 
@@ -16,6 +17,8 @@ class ProfileManager:
 
     PROFILE_FILE = "profile.json"
     FEEDBACK_FILE = "feedback.jsonl"
+    SESSIONS_FILE = "sessions.jsonl"
+    CURRENT_SESSION_FILE = "current_session.json"
     GENERATIONS_DIR = "generations"
     EXEMPLARS_DIR = "exemplars"
     ANTI_EXEMPLARS_DIR = "anti-exemplars"
@@ -44,6 +47,14 @@ class ProfileManager:
     @property
     def anti_exemplars_dir(self) -> Path:
         return self.splatworld_dir / self.ANTI_EXEMPLARS_DIR
+
+    @property
+    def sessions_path(self) -> Path:
+        return self.splatworld_dir / self.SESSIONS_FILE
+
+    @property
+    def current_session_path(self) -> Path:
+        return self.splatworld_dir / self.CURRENT_SESSION_FILE
 
     def is_initialized(self) -> bool:
         """Check if project has been initialized."""
@@ -227,3 +238,127 @@ class ProfileManager:
         """Get the most recent generation."""
         recent = self.get_recent_generations(limit=1)
         return recent[0] if recent else None
+
+    # Session management methods
+
+    def start_session(self) -> Session:
+        """Start a new session and record current stats."""
+        profile = self.load_profile()
+
+        session = Session(
+            session_id=f"session-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}",
+            started=datetime.now(),
+            activity={
+                "start_stats": {
+                    "generations": profile.stats.total_generations,
+                    "feedback": profile.stats.feedback_count,
+                    "learns": profile.calibration.learn_count,
+                }
+            },
+        )
+
+        # Write current session file
+        with open(self.current_session_path, "w") as f:
+            json.dump(session.to_dict(), f, indent=2)
+
+        return session
+
+    def end_session(self, summary: str = "", notes: str = "") -> Optional[Session]:
+        """End the current session and save to history."""
+        if not self.current_session_path.exists():
+            return None
+
+        # Load current session
+        with open(self.current_session_path) as f:
+            session = Session.from_dict(json.load(f))
+
+        # Calculate activity delta
+        activity = self.calculate_session_activity(session.started)
+        session.activity.update(activity)
+        session.ended = datetime.now()
+        session.summary = summary
+        session.notes = notes if notes else None
+
+        # Get last generation info
+        last_gen = self.get_last_generation()
+        if last_gen and last_gen.timestamp >= session.started:
+            session.last_generation_id = last_gen.id
+            session.last_prompt = last_gen.prompt
+
+        # Append to sessions history
+        with open(self.sessions_path, "a") as f:
+            f.write(json.dumps(session.to_dict()) + "\n")
+
+        # Remove current session file
+        self.current_session_path.unlink()
+
+        return session
+
+    def get_current_session(self) -> Optional[Session]:
+        """Get the current active session if one exists."""
+        if not self.current_session_path.exists():
+            return None
+
+        with open(self.current_session_path) as f:
+            return Session.from_dict(json.load(f))
+
+    def get_sessions(self, limit: int = 10) -> list[Session]:
+        """Get recent sessions from history."""
+        if not self.sessions_path.exists():
+            return []
+
+        sessions = []
+        with open(self.sessions_path) as f:
+            for line in f:
+                if line.strip():
+                    sessions.append(Session.from_dict(json.loads(line)))
+
+        # Return most recent first
+        sessions.reverse()
+        return sessions[:limit]
+
+    def calculate_session_activity(self, since: datetime) -> dict:
+        """Calculate activity since a given timestamp."""
+        profile = self.load_profile()
+        start_stats = {}
+
+        # Try to get start stats from current session
+        current = self.get_current_session()
+        if current and current.activity.get("start_stats"):
+            start_stats = current.activity["start_stats"]
+        else:
+            # Fall back to counting manually
+            start_stats = {
+                "generations": 0,
+                "feedback": 0,
+                "learns": 0,
+            }
+
+        # Count generations since session start
+        generations_since = 0
+        for gen in self.get_recent_generations(limit=100):
+            if gen.timestamp >= since:
+                generations_since += 1
+            else:
+                break
+
+        # Count feedback since session start
+        feedback_since = 0
+        for fb in reversed(self.get_feedback_history()):
+            if fb.timestamp >= since:
+                feedback_since += 1
+            else:
+                break
+
+        # Calculate conversions (generations with splat_path that were created since session start)
+        conversions_since = 0
+        for gen in self.get_recent_generations(limit=100):
+            if gen.timestamp >= since and gen.splat_path:
+                conversions_since += 1
+
+        return {
+            "generations": generations_since,
+            "feedback": feedback_since,
+            "conversions": conversions_since,
+            "learns": profile.calibration.learn_count - start_stats.get("learns", 0),
+        }

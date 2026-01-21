@@ -1278,6 +1278,9 @@ def help():
     console.print(Panel.fit(
         "[bold]SplatWorld Agent[/bold]\n"
         "Iterative 3D splat generation with taste learning.\n\n"
+        "[bold]Session Management:[/bold]\n"
+        "  resume-work    Resume from previous session\n"
+        "  exit           Save session and exit\n\n"
         "[bold]Training (Start Here):[/bold]\n"
         "  train          Guided training until calibrated (20 images)\n"
         "  learn          Manually run learning on feedback\n\n"
@@ -1298,6 +1301,196 @@ def help():
         "  config         View/edit configuration\n"
         "  install-prompts  Install Claude Code slash commands\n\n"
         "[dim]Use 'splatworld-agent COMMAND --help' for command details.[/dim]",
+        title="SplatWorld Agent",
+    ))
+
+
+@main.command("exit")
+@click.option("--summary", "-s", default="", help="Summary of what was accomplished")
+@click.option("--notes", "-n", default="", help="Notes for next session")
+def exit_session(summary: str, notes: str):
+    """Save session and exit SplatWorld Agent.
+
+    Records session activity (generations, feedback, conversions, learns)
+    and saves to session history for later resumption.
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check for current session
+    current = manager.get_current_session()
+    if not current:
+        console.print("[yellow]No active session to end.[/yellow]")
+        console.print("[dim]Start a session with 'splatworld-agent resume-work' first.[/dim]")
+        return
+
+    # Calculate duration
+    duration = datetime.now() - current.started
+    hours, remainder = divmod(int(duration.total_seconds()), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m {seconds}s"
+
+    # Auto-generate summary if not provided
+    if not summary:
+        activity = manager.calculate_session_activity(current.started)
+        parts = []
+        if activity["generations"] > 0:
+            parts.append(f"{activity['generations']} generations")
+        if activity["feedback"] > 0:
+            parts.append(f"{activity['feedback']} ratings")
+        if activity["conversions"] > 0:
+            parts.append(f"{activity['conversions']} conversions")
+        if activity["learns"] > 0:
+            parts.append(f"{activity['learns']} learn cycles")
+
+        if parts:
+            summary = ", ".join(parts)
+        else:
+            summary = "No activity recorded"
+
+    # End the session
+    session = manager.end_session(summary=summary, notes=notes)
+
+    if not session:
+        console.print("[red]Failed to end session.[/red]")
+        sys.exit(1)
+
+    # Display farewell
+    console.print(Panel.fit(
+        f"[bold green]Session Complete[/bold green]\n\n"
+        f"[bold]Duration:[/bold] {duration_str}\n"
+        f"[bold]Activity:[/bold] {summary}\n"
+        + (f"[bold]Notes:[/bold] {notes}\n" if notes else "")
+        + (f"\n[bold]Last prompt:[/bold] {session.last_prompt[:50]}..." if session.last_prompt and len(session.last_prompt) > 50 else
+           f"\n[bold]Last prompt:[/bold] {session.last_prompt}" if session.last_prompt else "")
+        + f"\n\n[dim]Session saved. Use 'splatworld-agent resume-work' to continue.[/dim]",
+        title="Goodbye!",
+    ))
+
+
+@main.command("resume-work")
+def resume_work():
+    """Resume work from previous session.
+
+    Shows recent session history, current status, and starts a new session
+    for tracking your work.
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    profile = manager.load_profile()
+
+    # Check for existing active session
+    current = manager.get_current_session()
+    if current:
+        duration = datetime.now() - current.started
+        hours, remainder = divmod(int(duration.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+
+        console.print(Panel.fit(
+            f"[yellow]Active session found[/yellow]\n\n"
+            f"Started: {current.started.strftime('%Y-%m-%d %H:%M')}\n"
+            f"Duration: {duration_str}\n\n"
+            f"[dim]Use 'splatworld-agent exit' to end this session first,[/dim]\n"
+            f"[dim]or continue working in the current session.[/dim]",
+            title="Session Already Active",
+        ))
+        return
+
+    # Show recent sessions
+    sessions = manager.get_sessions(limit=5)
+
+    if sessions:
+        console.print("\n[bold]Recent Sessions:[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Date", style="cyan")
+        table.add_column("Duration")
+        table.add_column("Activity")
+        table.add_column("Last Prompt")
+
+        for s in sessions:
+            if s.ended:
+                duration = s.ended - s.started
+                hours, remainder = divmod(int(duration.total_seconds()), 3600)
+                minutes, _ = divmod(remainder, 60)
+                duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            else:
+                duration_str = "?"
+
+            prompt_preview = (s.last_prompt[:30] + "...") if s.last_prompt and len(s.last_prompt) > 30 else (s.last_prompt or "-")
+
+            table.add_row(
+                s.started.strftime("%m-%d %H:%M"),
+                duration_str,
+                s.summary[:40] if s.summary else "-",
+                prompt_preview,
+            )
+
+        console.print(table)
+
+        # Show notes from last session if any
+        last_session = sessions[0]
+        if last_session.notes:
+            console.print(f"\n[bold]Notes from last session:[/bold]")
+            console.print(f"[cyan]{last_session.notes}[/cyan]")
+    else:
+        console.print("\n[dim]No previous sessions found.[/dim]")
+
+    # Show current status
+    console.print(f"\n[bold]Current Status:[/bold]")
+
+    # Calibration status
+    if profile.is_calibrated:
+        console.print(f"  Profile: [green]CALIBRATED[/green]")
+    else:
+        console.print(f"  Profile: [yellow]{profile.training_progress}[/yellow]")
+
+    # Stats
+    console.print(f"  Generations: {profile.stats.total_generations}")
+    console.print(f"  Feedback: {profile.stats.feedback_count} "
+                  f"([green]{profile.stats.positive_count}+[/green] / "
+                  f"[red]{profile.stats.negative_count}-[/red])")
+
+    # Check for unrated generations
+    recent_gens = manager.get_recent_generations(limit=20)
+    feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
+    unrated = [g for g in recent_gens if g.id not in feedbacks]
+
+    if unrated:
+        console.print(f"\n  [yellow]Unrated generations: {len(unrated)}[/yellow]")
+        console.print(f"  [dim]Run 'splatworld-agent review --unrated' to rate them[/dim]")
+
+    # Check for loved images without splats
+    loved_without_splats = []
+    for gen in recent_gens:
+        fb = feedbacks.get(gen.id)
+        if fb and fb.rating == "++" and not gen.splat_path:
+            loved_without_splats.append(gen)
+
+    if loved_without_splats:
+        console.print(f"\n  [cyan]Loved images ready for conversion: {len(loved_without_splats)}[/cyan]")
+        console.print(f"  [dim]Run 'splatworld-agent convert' to create 3D splats[/dim]")
+
+    # Start new session
+    session = manager.start_session()
+
+    console.print(Panel.fit(
+        f"[bold green]Welcome Back![/bold green]\n\n"
+        f"Session started: {session.started.strftime('%Y-%m-%d %H:%M')}\n"
+        f"Session ID: {session.session_id}\n\n"
+        f"[bold]Quick Commands:[/bold]\n"
+        f"  [cyan]generate[/cyan] \"prompt\"  - Generate an image\n"
+        f"  [cyan]batch[/cyan] \"prompt\"     - Generate multiple images\n"
+        f"  [cyan]review[/cyan]             - Rate recent images\n"
+        f"  [cyan]exit[/cyan]               - Save session and exit",
         title="SplatWorld Agent",
     ))
 
