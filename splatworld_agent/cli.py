@@ -1273,6 +1273,101 @@ def config():
 
 
 @main.command()
+def update():
+    """Update SplatWorld Agent to the latest version.
+
+    Pulls the latest changes from the git repository.
+    """
+    import subprocess
+
+    # Find the package directory
+    package_dir = Path(__file__).parent.parent
+
+    # Check if it's a git repo
+    git_dir = package_dir / ".git"
+    if not git_dir.exists():
+        console.print("[red]Error: SplatWorld Agent is not installed from git.[/red]")
+        console.print(f"[dim]Package location: {package_dir}[/dim]")
+        sys.exit(1)
+
+    console.print(f"[dim]Updating from: {package_dir}[/dim]")
+
+    try:
+        # Fetch first to see what's available
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Fetching updates...", total=None)
+
+            # Fetch
+            result = subprocess.run(
+                ["git", "fetch"],
+                cwd=package_dir,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                console.print(f"[red]Fetch failed:[/red] {result.stderr}")
+                sys.exit(1)
+
+            # Check for updates
+            result = subprocess.run(
+                ["git", "log", "HEAD..origin/main", "--oneline"],
+                cwd=package_dir,
+                capture_output=True,
+                text=True,
+            )
+            new_commits = result.stdout.strip().split("\n") if result.stdout.strip() else []
+
+            if not new_commits or new_commits == [""]:
+                progress.update(task, description="[green]Already up to date!")
+                console.print("\n[green]SplatWorld Agent is already up to date.[/green]")
+                return
+
+            progress.update(task, description=f"Found {len(new_commits)} new commits...")
+
+            # Show what's coming
+            console.print(f"\n[bold]New updates available:[/bold]")
+            for commit in new_commits[:10]:
+                console.print(f"  [cyan]{commit}[/cyan]")
+            if len(new_commits) > 10:
+                console.print(f"  [dim]... and {len(new_commits) - 10} more[/dim]")
+
+            # Pull
+            progress.update(task, description="Pulling updates...")
+            result = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                cwd=package_dir,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                console.print(f"[red]Pull failed:[/red] {result.stderr}")
+                console.print("[yellow]You may have local changes. Try:[/yellow]")
+                console.print(f"  cd {package_dir} && git stash && git pull && git stash pop")
+                sys.exit(1)
+
+            progress.update(task, description="[green]Update complete!")
+
+        console.print(Panel.fit(
+            f"[bold green]Updated Successfully![/bold green]\n\n"
+            f"Pulled {len(new_commits)} new commit(s).\n\n"
+            f"[dim]Run '/splatworld-agent:help' to see new commands.[/dim]",
+            title="SplatWorld Agent",
+        ))
+
+    except FileNotFoundError:
+        console.print("[red]Error: git not found. Please install git.[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]Update failed:[/red] {e}")
+        sys.exit(1)
+
+
+@main.command()
 def help():
     """Show help and available commands."""
     console.print(Panel.fit(
@@ -1299,6 +1394,7 @@ def help():
         "  history        Browse past generations\n\n"
         "[bold]Setup:[/bold]\n"
         "  config         View/edit configuration\n"
+        "  update         Update to latest version from git\n"
         "  install-prompts  Install Claude Code slash commands\n\n"
         "[dim]Use 'splatworld-agent COMMAND --help' for command details.[/dim]",
         title="SplatWorld Agent",
