@@ -4,7 +4,7 @@ SplatWorld Agent - Claude Code plugin for iterative 3D splat generation with tas
 The agent learns your aesthetic preferences over time and applies them to future generations.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from splatworld_agent.models import TasteProfile, Generation, Feedback
 from splatworld_agent.profile import ProfileManager
