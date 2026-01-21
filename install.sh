@@ -145,14 +145,22 @@ install_python() {
 
     cd "$INSTALL_DIR"
 
-    # Try pip install -e (editable mode)
-    if command -v pip3 &> /dev/null; then
-        pip3 install -e . --quiet 2>/dev/null || pip3 install -e .
-    else
-        pip install -e . --quiet 2>/dev/null || pip install -e .
+    # Try pip install (non-editable for better compatibility)
+    local pip_cmd="pip3"
+    if ! command -v pip3 &> /dev/null; then
+        pip_cmd="pip"
     fi
 
-    echo -e "  ${GREEN}✓${RESET} Installed Python package"
+    # Try with --user flag for permission issues
+    if $pip_cmd install . --user --quiet 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Installed Python package"
+    elif $pip_cmd install . --user 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Installed Python package"
+    else
+        echo -e "  ${YELLOW}⚠${RESET} Python package install failed (optional)"
+        echo -e "    ${DIM}The slash commands will still work via PYTHONPATH${RESET}"
+        echo -e "    ${DIM}To fix: upgrade pip with 'pip3 install --upgrade pip'${RESET}"
+    fi
 }
 
 # Set up Claude Code integration
