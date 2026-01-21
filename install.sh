@@ -10,6 +10,22 @@
 
 set -e
 
+# Parse arguments
+AUTO_YES=false
+for arg in "$@"; do
+    case $arg in
+        -y|--yes)
+            AUTO_YES=true
+            shift
+            ;;
+    esac
+done
+
+# Auto-yes if not running in a terminal (e.g., piped or in CI)
+if [ ! -t 0 ]; then
+    AUTO_YES=true
+fi
+
 # Colors
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -71,6 +87,12 @@ detect_mode() {
 
 # Prompt for install location
 prompt_location() {
+    if [ "$AUTO_YES" = true ]; then
+        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+        echo -e "  ${DIM}Auto-selecting default: $INSTALL_DIR${RESET}"
+        return
+    fi
+
     echo -e "  ${YELLOW}Where would you like to install?${RESET}"
     echo ""
     echo -e "  ${CYAN}1${RESET}) Default ${DIM}($DEFAULT_INSTALL_DIR)${RESET}"
@@ -104,8 +126,12 @@ install_repo() {
 
         if [ -d "$INSTALL_DIR" ]; then
             echo -e "  ${YELLOW}Directory exists: $INSTALL_DIR${RESET}"
-            read -p "  Update existing installation? [Y/n]: " update
-            update=${update:-Y}
+            if [ "$AUTO_YES" = true ]; then
+                update="Y"
+            else
+                read -p "  Update existing installation? [Y/n]: " update
+                update=${update:-Y}
+            fi
             if [[ $update =~ ^[Yy] ]]; then
                 cd "$INSTALL_DIR"
                 git pull --ff-only
@@ -121,7 +147,11 @@ install_repo() {
         if [ "$REPO_DIR" != "$INSTALL_DIR" ]; then
             if [ -d "$INSTALL_DIR" ]; then
                 echo -e "  ${YELLOW}Directory exists: $INSTALL_DIR${RESET}"
-                read -p "  Replace? [y/N]: " replace
+                if [ "$AUTO_YES" = true ]; then
+                    replace="Y"
+                else
+                    read -p "  Replace? [y/N]: " replace
+                fi
                 if [[ $replace =~ ^[Yy] ]]; then
                     rm -rf "$INSTALL_DIR"
                     cp -r "$REPO_DIR" "$INSTALL_DIR"
@@ -208,14 +238,20 @@ main() {
         # Running from repo - ask if they want to install here or elsewhere
         echo -e "  ${DIM}Running from: $REPO_DIR${RESET}"
         echo ""
-        read -p "  Install from current location? [Y/n]: " use_current
-        use_current=${use_current:-Y}
 
-        if [[ $use_current =~ ^[Yy] ]]; then
+        if [ "$AUTO_YES" = true ]; then
+            echo -e "  ${DIM}Auto-selecting current location${RESET}"
             INSTALL_DIR="$REPO_DIR"
         else
-            prompt_location
-            install_repo
+            read -p "  Install from current location? [Y/n]: " use_current
+            use_current=${use_current:-Y}
+
+            if [[ $use_current =~ ^[Yy] ]]; then
+                INSTALL_DIR="$REPO_DIR"
+            else
+                prompt_location
+                install_repo
+            fi
         fi
     else
         prompt_location
