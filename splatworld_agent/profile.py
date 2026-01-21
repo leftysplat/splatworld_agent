@@ -362,3 +362,51 @@ class ProfileManager:
             "conversions": conversions_since,
             "learns": profile.calibration.learn_count - start_stats.get("learns", 0),
         }
+
+    # Batch state management methods
+
+    def set_current_batch(self, batch_id: str, generation_ids: list[str]) -> None:
+        """Set the active batch for numbered image references."""
+        session_data = {
+            "current_batch_id": batch_id,
+            "batch_generation_ids": generation_ids,
+            "batch_size": len(generation_ids),
+            "batch_started": datetime.now().isoformat()
+        }
+        # Atomic write
+        temp_path = self.current_session_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            json.dump(session_data, f, indent=2)
+        temp_path.replace(self.current_session_path)
+
+    def resolve_image_number(self, image_num: int) -> Optional[str]:
+        """Map 1-indexed image number to generation ID."""
+        if not self.current_session_path.exists():
+            return None
+        try:
+            with open(self.current_session_path) as f:
+                session = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+        gen_ids = session.get("batch_generation_ids", [])
+        index = image_num - 1  # Convert to 0-indexed
+        if 0 <= index < len(gen_ids):
+            return gen_ids[index]
+        return None
+
+    def get_current_batch_generations(self) -> list[Generation]:
+        """Get all generations in the current batch, in order."""
+        if not self.current_session_path.exists():
+            return []
+        try:
+            with open(self.current_session_path) as f:
+                session = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return []
+        gen_ids = session.get("batch_generation_ids", [])
+        generations = []
+        for gen_id in gen_ids:
+            gen = self.get_generation(gen_id)
+            if gen:
+                generations.append(gen)
+        return generations
