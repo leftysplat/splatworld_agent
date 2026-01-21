@@ -44,6 +44,32 @@ def parse_batch_ratings(input_str: str) -> list[tuple[int, str]]:
     return [(int(num), rating) for num, rating in matches]
 
 
+def format_batch_context(batch_context: dict) -> str:
+    """Format batch context for display in review."""
+    if not batch_context.get("batch_id"):
+        return "[dim]Single generation (no batch)[/dim]"
+
+    batch_id = batch_context["batch_id"]
+
+    # Extract date from batch_id: "batch-20260121-143522" -> "Jan 21 14:35"
+    try:
+        parts = batch_id.split("-")
+        if len(parts) >= 3:
+            date_part = parts[1]  # "20260121"
+            time_part = parts[2]  # "143522"
+            batch_dt = datetime.strptime(date_part + time_part, "%Y%m%d%H%M%S")
+            readable = batch_dt.strftime("%b %d %H:%M")
+        else:
+            readable = batch_id
+    except (ValueError, IndexError):
+        readable = batch_id
+
+    img_num = batch_context["batch_index"] + 1  # 1-indexed for display
+    batch_size = batch_context["batch_size"]
+
+    return f"[cyan]Batch {readable}[/cyan] - Image [bold]{img_num}[/bold] of {batch_size}"
+
+
 @click.group()
 @click.version_option(version=__version__)
 def main():
@@ -726,13 +752,15 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
 
 @main.command()
 @click.option("--batch", "-b", help="Review specific batch ID")
+@click.option("--all", "all_unrated", is_flag=True, help="Review ALL unrated images across all batches")
 @click.option("--current", "-c", is_flag=True, help="Review current batch (default if no batch specified)")
 @click.option("--limit", "-n", default=10, help="Number of images to review")
 @click.option("--unrated", is_flag=True, help="Only show unrated images")
-def review(batch: str, current: bool, limit: int, unrated: bool):
+def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool):
     """Interactively review and rate generated images.
 
     By default, reviews the current batch if one exists.
+    Use --all to review ALL unrated images across all batches.
 
     Opens each image and prompts for quick feedback:
       ++ = love it
@@ -748,6 +776,95 @@ def review(batch: str, current: bool, limit: int, unrated: bool):
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
+
+    # --all flag: Review ALL unrated images across all batches
+    if all_unrated:
+        unrated_with_context = manager.get_all_unrated_generations()
+        unrated_with_context = unrated_with_context[:limit]
+
+        if not unrated_with_context:
+            console.print("[green]All images have been rated![/green]")
+            return
+
+        console.print(Panel.fit(
+            f"[bold]All Unrated Images[/bold]\n"
+            f"Found {len(unrated_with_context)} unrated images\n\n"
+            "Rating options:\n"
+            "  [green]++[/green] = love it (will be converted to splat)\n"
+            "  [green]+[/green]  = like it\n"
+            "  [yellow]-[/yellow]  = not great\n"
+            "  [red]--[/red] = hate it\n"
+            "  [dim]s[/dim]  = skip\n"
+            "  [dim]q[/dim]  = quit review",
+            title="Review All Unrated",
+        ))
+
+        reviewed = 0
+        loved = 0
+        total = len(unrated_with_context)
+
+        for i, (gen, batch_ctx) in enumerate(unrated_with_context, start=1):
+            console.print(f"\n[bold cyan]Image {i}[/bold cyan] of {total}")
+            console.print(format_batch_context(batch_ctx))
+            console.print(f"Prompt: {gen.prompt}")
+
+            if gen.source_image_path:
+                console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+                try:
+                    import subprocess
+                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+
+            while True:
+                try:
+                    rating_input = input("\nRating (++/+/-/--/s/q): ").strip().lower()
+                except (KeyboardInterrupt, EOFError):
+                    rating_input = "q"
+
+                if rating_input == "q":
+                    console.print("[yellow]Review stopped.[/yellow]")
+                    break
+                elif rating_input == "s":
+                    console.print("[dim]Skipped[/dim]")
+                    break
+                elif rating_input in ("++", "+", "-", "--"):
+                    fb = Feedback(
+                        generation_id=gen.id,
+                        timestamp=datetime.now(),
+                        rating=rating_input,
+                    )
+                    manager.add_or_replace_feedback(fb)
+
+                    rating_display = {"++": "[green]Love it![/green]", "+": "[green]Good[/green]",
+                                      "-": "[yellow]Not great[/yellow]", "--": "[red]Hate it[/red]"}
+                    console.print(f"Recorded: {rating_display[rating_input]}")
+                    reviewed += 1
+                    if rating_input == "++":
+                        loved += 1
+                    break
+                else:
+                    console.print("[red]Invalid rating. Use ++, +, -, --, s, or q[/red]")
+
+            if rating_input == "q":
+                break
+
+        console.print(f"\n[bold]Review complete![/bold]")
+        console.print(f"Reviewed: {reviewed} images")
+        console.print(f"Loved: {loved} images")
+
+        # Show remaining unrated count
+        remaining = manager.get_all_unrated_generations()
+        if remaining:
+            console.print(f"\n[yellow]Remaining unrated: {len(remaining)} images[/yellow]")
+
+        if loved > 0:
+            console.print(f"\n[cyan]Run 'splatworld-agent convert' to turn your {loved} loved images into 3D splats.[/cyan]")
+
+        if reviewed >= 3:
+            console.print(f"[cyan]Run 'splatworld-agent learn' to update your taste profile.[/cyan]")
+
+        return
 
     # Determine which generations to review
     generations = []
