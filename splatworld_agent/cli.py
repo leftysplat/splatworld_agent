@@ -269,6 +269,423 @@ def feedback(feedback_text: tuple, generation: str):
 
 
 @main.command()
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
+@click.option("--cycles", "-c", default=1, help="Number of cycles (generate, review, learn)")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
+def batch(prompt: tuple, count: int, cycles: int, generator: str):
+    """Generate a batch of images for review.
+
+    Generates N images, then lets you review and rate them before
+    optionally running more cycles with learned preferences.
+
+    Example workflow:
+        splatworld-agent batch "cozy cabin interior" -n 5 -c 2
+        # Generates 5 images, you review them, learns preferences,
+        # then generates 5 more with updated taste profile
+    """
+    prompt_text = " ".join(prompt)
+
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    config = Config.load()
+
+    # Validate config
+    issues = config.validate()
+    if issues:
+        console.print("[red]Configuration issues:[/red]")
+        for issue in issues:
+            console.print(f"  - {issue}")
+        sys.exit(1)
+
+    gen_name = generator or config.defaults.image_generator
+
+    for cycle_num in range(1, cycles + 1):
+        console.print(Panel.fit(
+            f"[bold]Cycle {cycle_num}/{cycles}[/bold]\n"
+            f"Generating {count} images for: {prompt_text}",
+            title="Batch Generation",
+        ))
+
+        profile = manager.load_profile()
+        enhanced_prompt = enhance_prompt(prompt_text, profile)
+
+        if enhanced_prompt != prompt_text:
+            console.print(f"[dim]Enhanced with taste:[/dim] {enhanced_prompt}")
+
+        # Track this batch
+        batch_id = f"batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        batch_gen_ids = []
+
+        try:
+            if gen_name == "nano":
+                from splatworld_agent.generators.nano import NanoGenerator
+                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+            else:
+                from splatworld_agent.generators.gemini import GeminiGenerator
+                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                for i in range(count):
+                    task = progress.add_task(f"Generating image {i+1}/{count}...", total=None)
+
+                    gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                    batch_gen_ids.append(gen_id)
+
+                    image_bytes = img_gen.generate(enhanced_prompt, seed=None)
+
+                    # Save generation
+                    gen_dir = manager.save_generation(Generation(
+                        id=gen_id,
+                        prompt=prompt_text,
+                        enhanced_prompt=enhanced_prompt,
+                        timestamp=datetime.now(),
+                        metadata={"generator": gen_name, "batch_id": batch_id, "batch_index": i},
+                    ))
+
+                    # Save image
+                    image_path = gen_dir / "source.png"
+                    with open(image_path, "wb") as f:
+                        f.write(image_bytes)
+
+                    # Update metadata with path
+                    metadata_path = gen_dir / "metadata.json"
+                    with open(metadata_path) as f:
+                        gen_data = json.load(f)
+                    gen_data["source_image_path"] = str(image_path)
+                    with open(metadata_path, "w") as f:
+                        json.dump(gen_data, f, indent=2)
+
+                    progress.update(task, description=f"[green]Image {i+1}/{count} saved: {gen_id}")
+
+            img_gen.close()
+
+            console.print(f"\n[bold green]Batch complete![/bold green] Generated {count} images.")
+            console.print(f"[dim]Batch ID: {batch_id}[/dim]")
+
+            # Show review instructions
+            console.print("\n[bold]Review your images:[/bold]")
+            console.print(f"  [cyan]splatworld-agent review[/cyan] - Interactive review")
+            console.print(f"  [cyan]splatworld-agent review --batch {batch_id}[/cyan] - Review this batch")
+            console.print("\n[bold]After review:[/bold]")
+            console.print(f"  [cyan]splatworld-agent convert[/cyan] - Convert loved images to 3D splats")
+
+            # If more cycles, prompt for review
+            if cycle_num < cycles:
+                console.print(f"\n[yellow]Review images before cycle {cycle_num + 1}...[/yellow]")
+                console.print("Press Enter after reviewing, or Ctrl+C to stop.")
+                try:
+                    input()
+                    # Run learn to update profile
+                    feedback_count = len(manager.get_feedback_history())
+                    if feedback_count >= 3:
+                        console.print("Learning from feedback...")
+                        engine = LearningEngine(api_key=config.api_keys.anthropic)
+                        generations = manager.get_recent_generations(limit=count * cycle_num)
+                        feedbacks = manager.get_feedback_history()
+                        result = engine.synthesize_from_history(generations, feedbacks, profile)
+                        if result.get("updates"):
+                            profile = engine.apply_updates(profile, result["updates"])
+                            manager.save_profile(profile)
+                            console.print("[green]Profile updated with learned preferences.[/green]")
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Stopping batch generation.[/yellow]")
+                    break
+
+        except Exception as e:
+            console.print(f"\n[red]Batch generation failed:[/red] {e}")
+            sys.exit(1)
+
+    console.print("\n[bold]Batch workflow complete![/bold]")
+    console.print("Next steps:")
+    console.print("  1. [cyan]splatworld-agent review[/cyan] - Review and rate images")
+    console.print("  2. [cyan]splatworld-agent learn[/cyan] - Learn from your feedback")
+    console.print("  3. [cyan]splatworld-agent convert[/cyan] - Convert favorites to 3D splats")
+
+
+@main.command()
+@click.option("--batch", "-b", help="Review specific batch ID")
+@click.option("--limit", "-n", default=10, help="Number of images to review")
+@click.option("--unrated", is_flag=True, help="Only show unrated images")
+def review(batch: str, limit: int, unrated: bool):
+    """Interactively review and rate generated images.
+
+    Opens each image and prompts for quick feedback:
+      ++ = love it
+      +  = like it
+      -  = not great
+      -- = hate it
+      s  = skip
+      q  = quit review
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Get generations to review
+    generations = manager.get_recent_generations(limit=limit * 2)  # Get extra in case some are rated
+
+    if batch:
+        generations = [g for g in generations if g.metadata.get("batch_id") == batch]
+
+    if unrated:
+        generations = [g for g in generations if g.feedback is None]
+
+    generations = generations[:limit]
+
+    if not generations:
+        console.print("[yellow]No images to review.[/yellow]")
+        return
+
+    console.print(Panel.fit(
+        f"[bold]Reviewing {len(generations)} images[/bold]\n\n"
+        "Rating options:\n"
+        "  [green]++[/green] = love it (will be converted to splat)\n"
+        "  [green]+[/green]  = like it\n"
+        "  [yellow]-[/yellow]  = not great\n"
+        "  [red]--[/red] = hate it\n"
+        "  [dim]s[/dim]  = skip\n"
+        "  [dim]q[/dim]  = quit review",
+        title="Image Review",
+    ))
+
+    reviewed = 0
+    loved = 0
+
+    for i, gen in enumerate(generations):
+        console.print(f"\n[bold]Image {i+1}/{len(generations)}[/bold]")
+        console.print(f"[dim]ID: {gen.id}[/dim]")
+        console.print(f"Prompt: {gen.prompt}")
+
+        # Show image path
+        if gen.source_image_path:
+            console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+            # Try to open image in default viewer
+            try:
+                import subprocess
+                subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
+        # Get rating
+        while True:
+            try:
+                rating_input = input("\nRating (++/+/-/--/s/q): ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                rating_input = "q"
+
+            if rating_input == "q":
+                console.print("[yellow]Review stopped.[/yellow]")
+                break
+            elif rating_input == "s":
+                console.print("[dim]Skipped[/dim]")
+                break
+            elif rating_input in ("++", "+", "-", "--"):
+                fb = Feedback(
+                    generation_id=gen.id,
+                    timestamp=datetime.now(),
+                    rating=rating_input,
+                )
+                manager.add_feedback(fb)
+
+                rating_display = {"++": "[green]Love it![/green]", "+": "[green]Good[/green]",
+                                  "-": "[yellow]Not great[/yellow]", "--": "[red]Hate it[/red]"}
+                console.print(f"Recorded: {rating_display[rating_input]}")
+                reviewed += 1
+                if rating_input == "++":
+                    loved += 1
+                break
+            else:
+                console.print("[red]Invalid rating. Use ++, +, -, --, s, or q[/red]")
+
+        if rating_input == "q":
+            break
+
+    console.print(f"\n[bold]Review complete![/bold]")
+    console.print(f"Reviewed: {reviewed} images")
+    console.print(f"Loved: {loved} images")
+
+    if loved > 0:
+        console.print(f"\n[cyan]Run 'splatworld-agent convert' to turn your {loved} loved images into 3D splats.[/cyan]")
+
+    if reviewed >= 3:
+        console.print(f"[cyan]Run 'splatworld-agent learn' to update your taste profile.[/cyan]")
+
+
+@main.command()
+@click.option("--all-positive", is_flag=True, help="Convert all positively rated (+ and ++)")
+@click.option("--generation", "-g", multiple=True, help="Specific generation IDs to convert")
+@click.option("--dry-run", is_flag=True, help="Show what would be converted without doing it")
+def convert(all_positive: bool, generation: tuple, dry_run: bool):
+    """Convert loved images to 3D splats.
+
+    By default, converts all images rated '++' (love it) that don't
+    already have splats.
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    config = Config.load()
+
+    if not config.api_keys.marble:
+        console.print("[red]Error: Marble API key required for 3D conversion.[/red]")
+        console.print("Set WORLDLABS_API_KEY environment variable.")
+        sys.exit(1)
+
+    # Find generations to convert
+    to_convert = []
+
+    if generation:
+        # Specific generations requested
+        for gen_id in generation:
+            gen = manager.get_generation(gen_id)
+            if gen:
+                to_convert.append(gen)
+            else:
+                console.print(f"[yellow]Generation not found: {gen_id}[/yellow]")
+    else:
+        # Find loved generations without splats
+        generations = manager.get_recent_generations(limit=50)
+        feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
+
+        for gen in generations:
+            fb = feedbacks.get(gen.id)
+            if not fb:
+                continue
+
+            # Skip if already has splat
+            if gen.splat_path:
+                continue
+
+            # Check rating
+            if all_positive and fb.rating in ("++", "+"):
+                to_convert.append(gen)
+            elif fb.rating == "++":
+                to_convert.append(gen)
+
+    if not to_convert:
+        console.print("[yellow]No images to convert.[/yellow]")
+        console.print("[dim]Rate images with '++' to mark them for conversion.[/dim]")
+        return
+
+    # Estimate cost
+    cost = len(to_convert) * 1.50
+    console.print(Panel.fit(
+        f"[bold]Converting {len(to_convert)} images to 3D splats[/bold]\n\n"
+        f"Estimated cost: [yellow]${cost:.2f}[/yellow]\n\n"
+        "Images to convert:\n" +
+        "\n".join(f"  - {g.id}: {g.prompt[:40]}..." for g in to_convert[:5]) +
+        (f"\n  ... and {len(to_convert) - 5} more" if len(to_convert) > 5 else ""),
+        title="3D Conversion",
+    ))
+
+    if dry_run:
+        console.print("\n[yellow]Dry run - no conversions performed.[/yellow]")
+        return
+
+    # Confirm
+    try:
+        confirm = input(f"\nProceed with conversion? (y/N): ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        confirm = "n"
+
+    if confirm != "y":
+        console.print("[yellow]Conversion cancelled.[/yellow]")
+        return
+
+    # Convert each image
+    from splatworld_agent.core.marble import MarbleClient
+
+    marble = MarbleClient(api_key=config.api_keys.marble)
+    total_cost = 0.0
+    converted = 0
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            for i, gen in enumerate(to_convert):
+                task = progress.add_task(f"Converting {i+1}/{len(to_convert)}: {gen.id}...", total=None)
+
+                # Load image
+                if not gen.source_image_path or not Path(gen.source_image_path).exists():
+                    progress.update(task, description=f"[red]Missing image: {gen.id}[/red]")
+                    continue
+
+                with open(gen.source_image_path, "rb") as f:
+                    image_bytes = f.read()
+
+                image_b64 = base64.b64encode(image_bytes).decode()
+
+                def on_progress(status: str, description: str):
+                    progress.update(task, description=f"{gen.id}: {description or status}")
+
+                result = marble.generate_and_wait(
+                    image_base64=image_b64,
+                    mime_type="image/png",
+                    display_name=gen.id,
+                    is_panorama=True,
+                    on_progress=on_progress,
+                )
+
+                # Get generation directory
+                gen_dir = Path(gen.source_image_path).parent
+
+                # Download splat file
+                splat_path = None
+                mesh_path = None
+
+                if result.splat_url:
+                    splat_path = gen_dir / "scene.spz"
+                    marble.download_file(result.splat_url, splat_path)
+
+                if result.mesh_url and config.defaults.download_meshes:
+                    mesh_path = gen_dir / "collision.glb"
+                    marble.download_file(result.mesh_url, mesh_path)
+
+                # Update metadata
+                metadata_path = gen_dir / "metadata.json"
+                with open(metadata_path) as f:
+                    gen_data = json.load(f)
+
+                if splat_path:
+                    gen_data["splat_path"] = str(splat_path)
+                if mesh_path:
+                    gen_data["mesh_path"] = str(mesh_path)
+                gen_data["viewer_url"] = result.viewer_url
+
+                with open(metadata_path, "w") as f:
+                    json.dump(gen_data, f, indent=2)
+
+                total_cost += result.cost_usd
+                converted += 1
+                progress.update(task, description=f"[green]Converted: {gen.id}[/green]")
+
+    finally:
+        marble.close()
+
+    console.print(f"\n[bold green]Conversion complete![/bold green]")
+    console.print(f"Converted: {converted}/{len(to_convert)} images")
+    console.print(f"Total cost: [yellow]${total_cost:.2f}[/yellow]")
+
+
+@main.command()
 @click.argument("image_path", type=click.Path(exists=True))
 @click.option("--notes", "-n", default="", help="Notes about why you like this")
 def exemplar(image_path: str, notes: str):
@@ -591,15 +1008,21 @@ def help():
     console.print(Panel.fit(
         "[bold]SplatWorld Agent[/bold]\n"
         "Iterative 3D splat generation with taste learning.\n\n"
-        "[bold]Commands:[/bold]\n"
+        "[bold]Batch Workflow (Recommended):[/bold]\n"
+        "  batch          Generate N images for review\n"
+        "  review         Interactively rate images (++/+/-/--)\n"
+        "  convert        Convert loved images to 3D splats\n"
+        "  learn          Update taste profile from feedback\n\n"
+        "[bold]Single Generation:[/bold]\n"
+        "  generate       Generate one image + splat from prompt\n"
+        "  feedback       Rate/critique a generation\n\n"
+        "[bold]Profile Management:[/bold]\n"
         "  init           Initialize .splatworld/ in current project\n"
-        "  generate       Generate image + splat from prompt\n"
-        "  feedback       Rate/critique a generation\n"
+        "  profile        View/edit taste profile\n"
         "  exemplar       Add reference image you love\n"
         "  anti-exemplar  Add reference image you hate\n"
-        "  profile        View/edit taste profile\n"
-        "  history        Browse past generations\n"
-        "  learn          Synthesize feedback into preferences\n"
+        "  history        Browse past generations\n\n"
+        "[bold]Setup:[/bold]\n"
         "  config         View/edit configuration\n"
         "  install-prompts  Install Claude Code slash commands\n\n"
         "[dim]Use 'splatworld-agent COMMAND --help' for command details.[/dim]",
