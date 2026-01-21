@@ -439,6 +439,124 @@ def rate(image_nums: tuple, rating: str):
         console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn'.[/cyan]")
 
 
+@main.command("brate")
+@click.argument("ratings_input", nargs=-1, required=True)
+def batch_rate(ratings_input: tuple):
+    """Rate multiple images with different ratings in one command.
+
+    Examples:
+        brate 1 ++ 2 - 3 -- 4 +
+        brate 1++ 2- 3-- 4+     (spaces optional)
+
+    Rating scale:
+        ++  love it (will be converted to splat)
+        +   like it
+        -   not great
+        --  hate it
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check for batch context
+    if not manager.current_session_path.exists():
+        console.print("[red]No batch context found.[/red]")
+        console.print("[yellow]Generate a batch first: splatworld-agent batch \"your prompt\"[/yellow]")
+        sys.exit(1)
+
+    # Get batch info
+    try:
+        with open(manager.current_session_path) as f:
+            session = json.load(f)
+        batch_size = session.get("batch_size", 0)
+        batch_gen_ids = session.get("batch_generation_ids", [])
+    except (json.JSONDecodeError, IOError):
+        console.print("[red]Error reading batch context.[/red]")
+        sys.exit(1)
+
+    if batch_size == 0:
+        console.print("[red]No images in current batch.[/red]")
+        sys.exit(1)
+
+    # Parse the input
+    input_str = " ".join(ratings_input)
+    pairs = parse_batch_ratings(input_str)
+
+    if not pairs:
+        console.print("[red]Could not parse ratings.[/red]")
+        console.print("[yellow]Format: 1 ++ 2 - 3 -- 4 +[/yellow]")
+        sys.exit(1)
+
+    # Validate all image numbers
+    invalid_nums = [n for n, _ in pairs if n < 1 or n > batch_size]
+    if invalid_nums:
+        console.print(f"[red]Invalid image number(s): {invalid_nums}[/red]")
+        console.print(f"[yellow]Valid range: 1-{batch_size}[/yellow]")
+        sys.exit(1)
+
+    # Process each rating
+    rating_display = {
+        "++": "[green]Love it![/green]",
+        "+": "[green]Good[/green]",
+        "-": "[yellow]Not great[/yellow]",
+        "--": "[red]Hate it[/red]",
+    }
+
+    for image_num, rating in pairs:
+        gen_id = manager.resolve_image_number(image_num)
+
+        if not gen_id:
+            console.print(f"[red]Could not resolve image {image_num}.[/red]")
+            continue
+
+        fb = Feedback(
+            generation_id=gen_id,
+            timestamp=datetime.now(),
+            rating=rating,
+        )
+
+        was_replaced, old_rating = manager.add_or_replace_feedback(fb)
+
+        if was_replaced:
+            console.print(f"Image {image_num}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
+        else:
+            console.print(f"Image {image_num}: {rating_display[rating]}")
+
+    # Check for missing ratings (RATE-02)
+    unrated = manager.get_unrated_in_batch(batch_gen_ids)
+    if unrated:
+        console.print(f"\n[yellow]Unrated images: {', '.join(map(str, unrated))}[/yellow]")
+        if click.confirm("Rate remaining images?", default=True):
+            for img_num in unrated:
+                rating = click.prompt(
+                    f"Rating for image {img_num}",
+                    type=click.Choice(["++", "+", "-", "--", "s"]),
+                    default="s"
+                )
+                if rating != "s":
+                    gen_id = manager.resolve_image_number(img_num)
+                    fb = Feedback(
+                        generation_id=gen_id,
+                        timestamp=datetime.now(),
+                        rating=rating,
+                    )
+                    manager.add_or_replace_feedback(fb)
+                    console.print(f"Image {img_num}: {rating_display[rating]}")
+
+    # Summary
+    console.print(f"\n[green]Rated {len(pairs)} images.[/green]")
+
+    # Suggest next steps
+    profile = manager.load_profile()
+    unprocessed = len(manager.get_unprocessed_feedback())
+    config = Config.load()
+    if unprocessed >= config.defaults.auto_learn_threshold:
+        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn'.[/cyan]")
+
+
 @main.command()
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
