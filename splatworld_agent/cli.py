@@ -588,10 +588,13 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
 
 @main.command()
 @click.option("--batch", "-b", help="Review specific batch ID")
+@click.option("--current", "-c", is_flag=True, help="Review current batch (default if no batch specified)")
 @click.option("--limit", "-n", default=10, help="Number of images to review")
 @click.option("--unrated", is_flag=True, help="Only show unrated images")
-def review(batch: str, limit: int, unrated: bool):
+def review(batch: str, current: bool, limit: int, unrated: bool):
     """Interactively review and rate generated images.
+
+    By default, reviews the current batch if one exists.
 
     Opens each image and prompts for quick feedback:
       ++ = love it
@@ -608,14 +611,28 @@ def review(batch: str, limit: int, unrated: bool):
 
     manager = ProfileManager(project_dir.parent)
 
-    # Get generations to review
-    generations = manager.get_recent_generations(limit=limit * 2)  # Get extra in case some are rated
+    # Determine which generations to review
+    generations = []
 
     if batch:
-        generations = [g for g in generations if g.metadata.get("batch_id") == batch]
+        # Review specific batch by ID
+        all_gens = manager.get_recent_generations(limit=limit * 2)
+        generations = [g for g in all_gens if g.metadata.get("batch_id") == batch]
+    elif current or (not batch and not unrated):
+        # Review current batch (default behavior)
+        generations = manager.get_current_batch_generations()
+        if not generations:
+            console.print("[yellow]No current batch. Generate one with: splatworld-agent batch \"prompt\"[/yellow]")
+            console.print("[dim]Or use --unrated to review all unrated images.[/dim]")
+            return
+    else:
+        # Review recent generations
+        generations = manager.get_recent_generations(limit=limit * 2)
 
     if unrated:
-        generations = [g for g in generations if g.feedback is None]
+        # Filter to unrated only
+        feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
+        generations = [g for g in generations if g.id not in feedbacks]
 
     generations = generations[:limit]
 
@@ -638,9 +655,15 @@ def review(batch: str, limit: int, unrated: bool):
     reviewed = 0
     loved = 0
 
-    for i, gen in enumerate(generations):
-        console.print(f"\n[bold]Image {i+1}/{len(generations)}[/bold]")
-        console.print(f"[dim]ID: {gen.id}[/dim]")
+    for i, gen in enumerate(generations, start=1):
+        # Show image number prominently
+        console.print(f"\n[bold cyan]Image {i}[/bold cyan] of {len(generations)}")
+
+        # Show batch index if available
+        batch_index = gen.metadata.get("batch_index")
+        if batch_index is not None:
+            console.print(f"[dim]Batch position: {batch_index + 1}[/dim]")
+
         console.print(f"Prompt: {gen.prompt}")
 
         # Show image path
