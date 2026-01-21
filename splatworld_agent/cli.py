@@ -71,10 +71,15 @@ def setup_keys(anthropic_key: str, google_key: str, worldlabs_key: str, nano_key
         cfg.api_keys.anthropic = anthropic_key
     if google_key:
         cfg.api_keys.google = google_key
+        # Google key is also used for Nano Banana Pro
+        cfg.api_keys.nano = google_key
     if worldlabs_key:
         cfg.api_keys.marble = worldlabs_key
     if nano_key:
         cfg.api_keys.nano = nano_key
+
+    # Set default image generator to nano (Nano Banana Pro)
+    cfg.defaults.image_generator = "nano"
 
     # Save config
     cfg.save()
@@ -84,9 +89,8 @@ def setup_keys(anthropic_key: str, google_key: str, worldlabs_key: str, nano_key
     # Show status
     console.print("\n[bold]API Key Status:[/bold]")
     console.print(f"  Anthropic: {'[green]configured[/green]' if cfg.api_keys.anthropic else '[red]missing[/red]'}")
-    console.print(f"  Google: {'[green]configured[/green]' if cfg.api_keys.google else '[yellow]missing[/yellow]'}")
-    console.print(f"  World Labs: {'[green]configured[/green]' if cfg.api_keys.marble else '[red]missing[/red]'}")
-    console.print(f"  Nano: {'[green]configured[/green]' if cfg.api_keys.nano else '[yellow]missing[/yellow]'}")
+    console.print(f"  Google/Nano Banana Pro: {'[green]configured[/green]' if cfg.api_keys.nano else '[red]missing[/red]'}")
+    console.print(f"  World Labs (Marble): {'[green]configured[/green]' if cfg.api_keys.marble else '[red]missing[/red]'}")
 
 
 @main.command("check-keys")
@@ -97,9 +101,8 @@ def check_keys():
 
     console.print("[bold]API Key Status:[/bold]")
     console.print(f"  Anthropic: {'[green]configured[/green]' if cfg.api_keys.anthropic else '[red]missing[/red]'}")
-    console.print(f"  Google: {'[green]configured[/green]' if cfg.api_keys.google else '[yellow]missing[/yellow]'}")
+    console.print(f"  Google/Nano Banana Pro: {'[green]configured[/green]' if cfg.api_keys.nano else '[red]missing[/red]'}")
     console.print(f"  World Labs (Marble): {'[green]configured[/green]' if cfg.api_keys.marble else '[red]missing[/red]'}")
-    console.print(f"  Nano: {'[green]configured[/green]' if cfg.api_keys.nano else '[yellow]missing[/yellow]'}")
 
     if issues:
         console.print("\n[red]Missing required keys:[/red]")
