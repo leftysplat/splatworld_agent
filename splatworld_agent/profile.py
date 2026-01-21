@@ -86,10 +86,17 @@ class ProfileManager:
         # Update profile stats
         profile = self.load_profile()
         profile.stats.feedback_count += 1
-        if feedback.is_love:
+
+        # Track all rating types
+        if feedback.rating == "++":
             profile.stats.love_count += 1
-        elif feedback.is_hate:
+        elif feedback.rating == "+":
+            profile.stats.like_count += 1
+        elif feedback.rating == "-":
+            profile.stats.dislike_count += 1
+        elif feedback.rating == "--":
             profile.stats.hate_count += 1
+
         self.save_profile(profile)
 
     def get_feedback_history(self, limit: Optional[int] = None) -> list[Feedback]:

@@ -85,6 +85,17 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
     profile = manager.load_profile()
 
+    # Warn if not calibrated
+    if not profile.is_calibrated:
+        console.print(Panel.fit(
+            f"[yellow]Profile not calibrated[/yellow]\n\n"
+            f"{profile.training_progress}\n\n"
+            f"For best results, run [cyan]splatworld-agent train \"{prompt_text}\"[/cyan]\n"
+            f"to calibrate your taste profile first (20 rated images).\n\n"
+            f"[dim]Continuing with uncalibrated profile...[/dim]",
+            title="Training Recommended",
+        ))
+
     # Enhance prompt with taste profile
     enhanced_prompt = prompt_text
     if not no_enhance:
@@ -303,6 +314,18 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
         sys.exit(1)
 
     gen_name = generator or config.defaults.image_generator
+
+    # Check calibration status
+    profile = manager.load_profile()
+    if not profile.is_calibrated:
+        console.print(Panel.fit(
+            f"[yellow]Profile not calibrated[/yellow]\n\n"
+            f"{profile.training_progress}\n\n"
+            f"Consider running [cyan]splatworld-agent train \"{prompt_text}\"[/cyan]\n"
+            f"for guided training (generates, reviews, learns until calibrated).\n\n"
+            f"[dim]Continuing with batch generation...[/dim]",
+            title="Training Recommended",
+        ))
 
     for cycle_num in range(1, cycles + 1):
         console.print(Panel.fit(
@@ -745,12 +768,17 @@ def profile(edit: bool, as_json: bool):
         return
 
     # Display profile nicely
+    calibration_status = "[green]CALIBRATED[/green]" if prof.is_calibrated else f"[yellow]{prof.training_progress}[/yellow]"
+
     console.print(Panel.fit(
         f"[bold]Taste Profile[/bold]\n"
+        f"Status: {calibration_status}\n"
         f"Created: {prof.created.strftime('%Y-%m-%d')}\n"
         f"Updated: {prof.updated.strftime('%Y-%m-%d %H:%M')}\n"
         f"Generations: {prof.stats.total_generations}\n"
-        f"Feedback: {prof.stats.feedback_count} ({prof.stats.love_count} loves, {prof.stats.hate_count} hates)",
+        f"Feedback: {prof.stats.feedback_count} "
+        f"([green]{prof.stats.love_count}++[/green] [green]{prof.stats.like_count}+[/green] "
+        f"[yellow]{prof.stats.dislike_count}-[/yellow] [red]{prof.stats.hate_count}--[/red])",
         title="SplatWorld Agent",
     ))
 
@@ -944,6 +972,21 @@ def learn(dry_run: bool):
         else:
             # Apply updates
             updated_profile = engine.apply_updates(profile, updates)
+
+            # Update calibration status
+            updated_profile.calibration.last_learn_at = datetime.now()
+            updated_profile.calibration.learn_count += 1
+
+            # Check if we've reached calibration threshold
+            can_calibrate, reason = updated_profile.stats.can_calibrate()
+            if can_calibrate and not updated_profile.calibration.is_calibrated:
+                updated_profile.calibration.is_calibrated = True
+                updated_profile.calibration.calibrated_at = datetime.now()
+                console.print("\n[bold green]Profile CALIBRATED![/bold green]")
+                console.print("[green]Your taste profile is now trained and ready for autonomous generation.[/green]")
+            elif not updated_profile.calibration.is_calibrated:
+                console.print(f"\n[yellow]Training progress:[/yellow] {reason}")
+
             manager.save_profile(updated_profile)
             console.print("\n[bold green]Profile updated![/bold green]")
             console.print("[dim]Use 'splatworld-agent profile' to view your updated taste profile.[/dim]")
@@ -951,6 +994,233 @@ def learn(dry_run: bool):
     except Exception as e:
         console.print(f"\n[red]Learning failed:[/red] {e}")
         sys.exit(1)
+
+
+@main.command()
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("--images-per-round", "-n", default=5, help="Images to generate per round")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
+def train(prompt: tuple, images_per_round: int, generator: str):
+    """Guided training mode to calibrate your taste profile.
+
+    Runs generate-review-learn cycles until the profile is calibrated
+    (minimum 20 rated images with good positive/negative distribution).
+
+    Example:
+        splatworld-agent train "cozy cabin interior"
+        # Generates 5 images, you review them, learns, repeats until calibrated
+    """
+    from splatworld_agent.models import CalibrationStatus
+
+    prompt_text = " ".join(prompt)
+
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    config = Config.load()
+
+    # Validate config
+    issues = config.validate()
+    if issues:
+        console.print("[red]Configuration issues:[/red]")
+        for issue in issues:
+            console.print(f"  - {issue}")
+        sys.exit(1)
+
+    profile = manager.load_profile()
+
+    if profile.is_calibrated:
+        console.print("[green]Profile is already calibrated![/green]")
+        console.print(f"[dim]Calibrated at: {profile.calibration.calibrated_at}[/dim]")
+        console.print(f"[dim]Total feedback: {profile.stats.feedback_count}[/dim]")
+        return
+
+    min_feedback = CalibrationStatus.MIN_FEEDBACK_FOR_CALIBRATION
+    console.print(Panel.fit(
+        f"[bold]Training Mode[/bold]\n\n"
+        f"Training your taste profile with: {prompt_text}\n\n"
+        f"Requirements for calibration:\n"
+        f"  - Minimum {min_feedback} rated images\n"
+        f"  - At least 10% positive feedback (++/+)\n"
+        f"  - At least 10% negative feedback (--/-)\n\n"
+        f"Current progress: {profile.stats.feedback_count}/{min_feedback} ratings\n"
+        f"  Positive: {profile.stats.positive_count} ({profile.stats.love_count} loves, {profile.stats.like_count} likes)\n"
+        f"  Negative: {profile.stats.negative_count} ({profile.stats.hate_count} hates, {profile.stats.dislike_count} dislikes)\n\n"
+        f"[dim]Press Ctrl+C at any time to pause training.[/dim]",
+        title="Taste Profile Training",
+    ))
+
+    gen_name = generator or config.defaults.image_generator
+    round_num = 0
+
+    try:
+        while not profile.is_calibrated:
+            round_num += 1
+            remaining = min_feedback - profile.stats.feedback_count
+            images_this_round = min(images_per_round, remaining + 2)  # Generate a few extra
+
+            console.print(f"\n[bold cyan]━━━ Round {round_num} ━━━[/bold cyan]")
+            console.print(f"Generating {images_this_round} images...")
+
+            # Get current profile for enhancement
+            profile = manager.load_profile()
+            enhanced_prompt = enhance_prompt(prompt_text, profile)
+
+            if enhanced_prompt != prompt_text and round_num > 1:
+                console.print(f"[dim]Prompt enhanced with learned preferences[/dim]")
+
+            # Generate images
+            if gen_name == "nano":
+                from splatworld_agent.generators.nano import NanoGenerator
+                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+            else:
+                from splatworld_agent.generators.gemini import GeminiGenerator
+                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+
+            batch_gen_ids = []
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                for i in range(images_this_round):
+                    task = progress.add_task(f"Generating {i+1}/{images_this_round}...", total=None)
+
+                    gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                    batch_gen_ids.append(gen_id)
+
+                    image_bytes = img_gen.generate(enhanced_prompt, seed=None)
+
+                    gen_dir = manager.save_generation(Generation(
+                        id=gen_id,
+                        prompt=prompt_text,
+                        enhanced_prompt=enhanced_prompt,
+                        timestamp=datetime.now(),
+                        metadata={"generator": gen_name, "training_round": round_num},
+                    ))
+
+                    image_path = gen_dir / "source.png"
+                    with open(image_path, "wb") as f:
+                        f.write(image_bytes)
+
+                    metadata_path = gen_dir / "metadata.json"
+                    with open(metadata_path) as f:
+                        gen_data = json.load(f)
+                    gen_data["source_image_path"] = str(image_path)
+                    with open(metadata_path, "w") as f:
+                        json.dump(gen_data, f, indent=2)
+
+                    progress.update(task, description=f"[green]{i+1}/{images_this_round} done[/green]")
+
+            img_gen.close()
+
+            # Review phase
+            console.print(f"\n[bold]Review Phase[/bold]")
+            console.print("Rate each image: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate [dim]s[/dim]=skip")
+
+            reviewed = 0
+            for gen_id in batch_gen_ids:
+                gen = manager.get_generation(gen_id)
+                if not gen or not gen.source_image_path:
+                    continue
+
+                console.print(f"\n[dim]Image {reviewed + 1}/{len(batch_gen_ids)}[/dim]")
+
+                # Open image
+                try:
+                    import subprocess
+                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+
+                while True:
+                    try:
+                        rating = input("Rating (++/+/-/--/s): ").strip().lower()
+                    except (KeyboardInterrupt, EOFError):
+                        raise KeyboardInterrupt
+
+                    if rating == "s":
+                        console.print("[dim]Skipped[/dim]")
+                        break
+                    elif rating in ("++", "+", "-", "--"):
+                        fb = Feedback(
+                            generation_id=gen_id,
+                            timestamp=datetime.now(),
+                            rating=rating,
+                        )
+                        manager.add_feedback(fb)
+
+                        rating_display = {"++": "[green]Love![/green]", "+": "[green]Good[/green]",
+                                          "-": "[yellow]Meh[/yellow]", "--": "[red]Hate[/red]"}
+                        console.print(rating_display[rating])
+                        reviewed += 1
+                        break
+                    else:
+                        console.print("[red]Invalid. Use ++, +, -, --, or s[/red]")
+
+            # Reload profile to get updated stats
+            profile = manager.load_profile()
+
+            # Learn phase (if enough feedback)
+            if profile.stats.feedback_count >= 3:
+                console.print(f"\n[bold]Learning Phase[/bold]")
+                console.print(f"Analyzing {profile.stats.feedback_count} feedback entries...")
+
+                try:
+                    engine = LearningEngine(api_key=config.api_keys.anthropic)
+                    generations = manager.get_recent_generations(limit=50)
+                    feedbacks = manager.get_feedback_history()
+
+                    result = engine.synthesize_from_history(generations, feedbacks, profile)
+
+                    if result.get("updates"):
+                        profile = engine.apply_updates(profile, result["updates"])
+                        profile.calibration.last_learn_at = datetime.now()
+                        profile.calibration.learn_count += 1
+
+                        # Check calibration
+                        can_calibrate, reason = profile.stats.can_calibrate()
+                        if can_calibrate:
+                            profile.calibration.is_calibrated = True
+                            profile.calibration.calibrated_at = datetime.now()
+
+                        manager.save_profile(profile)
+                        console.print("[green]Preferences updated![/green]")
+                    else:
+                        console.print("[dim]No new patterns identified yet.[/dim]")
+
+                except Exception as e:
+                    console.print(f"[yellow]Learning skipped: {e}[/yellow]")
+
+            # Show progress
+            console.print(f"\n[bold]Progress:[/bold] {profile.stats.feedback_count}/{min_feedback} ratings")
+            console.print(f"  [green]Positive: {profile.stats.positive_count}[/green] | [red]Negative: {profile.stats.negative_count}[/red]")
+
+            can_calibrate, reason = profile.stats.can_calibrate()
+            if not can_calibrate:
+                console.print(f"  [yellow]{reason}[/yellow]")
+
+        # Training complete!
+        console.print(Panel.fit(
+            f"[bold green]Training Complete![/bold green]\n\n"
+            f"Your taste profile is now calibrated.\n\n"
+            f"Total ratings: {profile.stats.feedback_count}\n"
+            f"Training rounds: {round_num}\n"
+            f"Learn cycles: {profile.calibration.learn_count}\n\n"
+            f"[bold]Next steps:[/bold]\n"
+            f"  [cyan]splatworld-agent batch \"{prompt_text}\"[/cyan] - Generate with learned preferences\n"
+            f"  [cyan]splatworld-agent convert[/cyan] - Convert favorites to 3D splats",
+            title="Calibration Complete",
+        ))
+
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Training paused.[/yellow]")
+        console.print(f"Progress saved: {profile.stats.feedback_count}/{min_feedback} ratings")
+        console.print("Run [cyan]splatworld-agent train[/cyan] again to continue.")
 
 
 @main.command("install-prompts")
@@ -1008,11 +1278,13 @@ def help():
     console.print(Panel.fit(
         "[bold]SplatWorld Agent[/bold]\n"
         "Iterative 3D splat generation with taste learning.\n\n"
-        "[bold]Batch Workflow (Recommended):[/bold]\n"
+        "[bold]Training (Start Here):[/bold]\n"
+        "  train          Guided training until calibrated (20 images)\n"
+        "  learn          Manually run learning on feedback\n\n"
+        "[bold]Batch Workflow (After Training):[/bold]\n"
         "  batch          Generate N images for review\n"
         "  review         Interactively rate images (++/+/-/--)\n"
-        "  convert        Convert loved images to 3D splats\n"
-        "  learn          Update taste profile from feedback\n\n"
+        "  convert        Convert loved images to 3D splats\n\n"
         "[bold]Single Generation:[/bold]\n"
         "  generate       Generate one image + splat from prompt\n"
         "  feedback       Rate/critique a generation\n\n"

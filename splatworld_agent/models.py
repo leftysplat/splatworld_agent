@@ -151,19 +151,54 @@ class Exemplar:
 
 
 @dataclass
+class CalibrationStatus:
+    """Tracks whether the taste profile has been sufficiently trained."""
+
+    MIN_FEEDBACK_FOR_CALIBRATION = 20  # Minimum rated images
+    MIN_POSITIVE_RATIO = 0.1  # Need at least 10% positive feedback
+    MIN_NEGATIVE_RATIO = 0.1  # Need at least 10% negative feedback
+
+    is_calibrated: bool = False
+    calibrated_at: Optional[datetime] = None
+    last_learn_at: Optional[datetime] = None
+    learn_count: int = 0  # How many times learn has been run
+
+    def to_dict(self) -> dict:
+        return {
+            "is_calibrated": self.is_calibrated,
+            "calibrated_at": self.calibrated_at.isoformat() if self.calibrated_at else None,
+            "last_learn_at": self.last_learn_at.isoformat() if self.last_learn_at else None,
+            "learn_count": self.learn_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CalibrationStatus":
+        return cls(
+            is_calibrated=data.get("is_calibrated", False),
+            calibrated_at=datetime.fromisoformat(data["calibrated_at"]) if data.get("calibrated_at") else None,
+            last_learn_at=datetime.fromisoformat(data["last_learn_at"]) if data.get("last_learn_at") else None,
+            learn_count=data.get("learn_count", 0),
+        )
+
+
+@dataclass
 class ProfileStats:
     """Statistics about profile usage."""
 
     total_generations: int = 0
     feedback_count: int = 0
-    love_count: int = 0
-    hate_count: int = 0
+    love_count: int = 0  # ++ ratings
+    like_count: int = 0  # + ratings
+    dislike_count: int = 0  # - ratings
+    hate_count: int = 0  # -- ratings
 
     def to_dict(self) -> dict:
         return {
             "total_generations": self.total_generations,
             "feedback_count": self.feedback_count,
             "love_count": self.love_count,
+            "like_count": self.like_count,
+            "dislike_count": self.dislike_count,
             "hate_count": self.hate_count,
         }
 
@@ -173,8 +208,42 @@ class ProfileStats:
             total_generations=data.get("total_generations", 0),
             feedback_count=data.get("feedback_count", 0),
             love_count=data.get("love_count", 0),
+            like_count=data.get("like_count", 0),
+            dislike_count=data.get("dislike_count", 0),
             hate_count=data.get("hate_count", 0),
         )
+
+    @property
+    def positive_count(self) -> int:
+        """Total positive ratings (++ and +)."""
+        return self.love_count + self.like_count
+
+    @property
+    def negative_count(self) -> int:
+        """Total negative ratings (- and --)."""
+        return self.dislike_count + self.hate_count
+
+    def can_calibrate(self) -> tuple[bool, str]:
+        """Check if there's enough feedback to calibrate.
+
+        Returns (can_calibrate, reason_if_not).
+        """
+        min_feedback = CalibrationStatus.MIN_FEEDBACK_FOR_CALIBRATION
+
+        if self.feedback_count < min_feedback:
+            return False, f"Need {min_feedback - self.feedback_count} more rated images (have {self.feedback_count}/{min_feedback})"
+
+        if self.feedback_count > 0:
+            pos_ratio = self.positive_count / self.feedback_count
+            neg_ratio = self.negative_count / self.feedback_count
+
+            if pos_ratio < CalibrationStatus.MIN_POSITIVE_RATIO:
+                return False, f"Need more positive feedback (++/+) to learn what you like"
+
+            if neg_ratio < CalibrationStatus.MIN_NEGATIVE_RATIO:
+                return False, f"Need more negative feedback (--/-) to learn what to avoid"
+
+        return True, "Ready to calibrate"
 
 
 @dataclass
@@ -194,6 +263,21 @@ class TasteProfile:
     anti_exemplars: list[Exemplar] = field(default_factory=list)
 
     stats: ProfileStats = field(default_factory=ProfileStats)
+    calibration: CalibrationStatus = field(default_factory=CalibrationStatus)
+
+    @property
+    def is_calibrated(self) -> bool:
+        """Whether the profile has been sufficiently trained."""
+        return self.calibration.is_calibrated
+
+    @property
+    def training_progress(self) -> str:
+        """Human-readable training progress."""
+        min_fb = CalibrationStatus.MIN_FEEDBACK_FOR_CALIBRATION
+        current = self.stats.feedback_count
+        if self.is_calibrated:
+            return f"Calibrated ({current} ratings)"
+        return f"Training: {current}/{min_fb} ratings ({int(current/min_fb*100)}%)"
 
     def to_dict(self) -> dict:
         return {
@@ -207,6 +291,7 @@ class TasteProfile:
             "exemplars": [e.to_dict() for e in self.exemplars],
             "anti_exemplars": [e.to_dict() for e in self.anti_exemplars],
             "stats": self.stats.to_dict(),
+            "calibration": self.calibration.to_dict(),
         }
 
     @classmethod
@@ -222,6 +307,7 @@ class TasteProfile:
             exemplars=[Exemplar.from_dict(e) for e in data.get("exemplars", [])],
             anti_exemplars=[Exemplar.from_dict(e) for e in data.get("anti_exemplars", [])],
             stats=ProfileStats.from_dict(data.get("stats", {})),
+            calibration=CalibrationStatus.from_dict(data.get("calibration", {})),
         )
 
     def save(self, path: Path) -> None:
