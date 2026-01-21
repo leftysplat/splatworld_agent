@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "splatworld-agent"
+version = "0.1.0"
+description = "Claude Code plugin for iterative 3D splat generation with taste learning"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "SplatWorld"}
+]
+keywords = ["gaussian-splats", "3d", "ai", "claude", "generation", "taste-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "click>=8.0.0",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "anthropic>=0.27.0",
+]
+
+[project.optional-dependencies]
+nano = [
+    # Nano Banana Pro SDK when available
+]
+gemini = [
+    "google-genai>=1.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+all = [
+    "splatworld-agent[nano,gemini,dev]",
+]
+
+[project.scripts]
+splatworld-agent = "splatworld_agent.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/leftysplat/splatworld_agent"
+Documentation = "https://github.com/leftysplat/splatworld_agent#readme"
+Repository = "https://github.com/leftysplat/splatworld_agent"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
