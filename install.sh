@@ -212,6 +212,17 @@ setup_claude() {
     ln -s "$INSTALL_DIR/commands" "$CLAUDE_COMMANDS_DIR/splatworld-agent"
 
     echo -e "  ${GREEN}✓${RESET} Linked commands to ~/.claude/commands/splatworld-agent"
+
+    # Update PYTHONPATH in all command files to point to install location
+    echo -e "  Updating command paths..."
+    for cmd_file in "$INSTALL_DIR/commands"/*.md; do
+        if [ -f "$cmd_file" ]; then
+            # Replace the PYTHONPATH line with the correct install dir
+            sed -i '' "s|PYTHONPATH=~/Documents/splatworld_agent|PYTHONPATH=$INSTALL_DIR|g" "$cmd_file"
+            sed -i '' "s|PYTHONPATH=.*/splatworld_agent|PYTHONPATH=$INSTALL_DIR|g" "$cmd_file"
+        fi
+    done
+    echo -e "  ${GREEN}✓${RESET} Updated command paths to $INSTALL_DIR"
 }
 
 # Print completion message
