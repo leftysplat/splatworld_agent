@@ -19,24 +19,44 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 
 - Python 3.10+
 - Claude Code CLI
+- git
 - API keys for:
   - World Labs Marble (3D conversion)
   - Nano Banana Pro or Gemini (image generation)
   - Anthropic (prompt enhancement)
 
-### Install
+### Quick Install
+
+```bash
+# One-line install (clones to ~/.local/share/splatworld_agent)
+curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld_agent/main/install.sh | bash
+```
+
+The installer will:
+1. Prompt for install location (default: `~/.local/share/splatworld_agent`)
+2. Clone the repository
+3. Install the Python package
+4. Set up Claude Code integration (symlinks commands to `~/.claude/commands/`)
+
+### Manual Install
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/splatworld_agent.git
+git clone https://github.com/leftysplat/splatworld_agent.git
 cd splatworld_agent
 
-# Install in development mode
-pip install -e .
-
-# Install Claude Code prompts
-splatworld-agent install-prompts
+# Run the installer
+./install.sh
 ```
+
+### Updating
+
+Once installed, update from within Claude Code:
+```
+/splatworld-agent:update
+```
+
+This pulls the latest changes from the repository. Since commands are symlinked, updates are immediate.
 
 ### Configure API Keys
 
