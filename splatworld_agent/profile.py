@@ -488,3 +488,69 @@ class ProfileManager:
                 unrated.append(i)
 
         return unrated
+
+    def get_all_unrated_generations(self) -> list[tuple[Generation, dict]]:
+        """Get all unrated generations across all batches with batch context.
+
+        Returns list of (Generation, batch_context) tuples sorted by timestamp descending.
+        batch_context contains:
+            - batch_id: str or None
+            - batch_index: int (0-indexed position from metadata)
+            - batch_size: int (count of generations with same batch_id)
+        """
+        # Get all rated generation IDs
+        rated_ids = {f.generation_id for f in self.get_feedback_history()}
+
+        # First pass: collect all unrated generations and track batch sizes
+        unrated_gens: list[tuple[Generation, Optional[str], int]] = []  # (gen, batch_id, batch_index)
+        batch_counts: dict[str, int] = {}  # batch_id -> count of generations
+
+        # Iterate ALL date directories
+        if not self.generations_dir.exists():
+            return []
+
+        for date_dir in self.generations_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            for gen_dir in date_dir.iterdir():
+                if not gen_dir.is_dir():
+                    continue
+
+                metadata_path = gen_dir / "metadata.json"
+                if not metadata_path.exists():
+                    continue
+
+                try:
+                    with open(metadata_path) as f:
+                        gen_data = json.load(f)
+                except json.JSONDecodeError:
+                    # Skip corrupted metadata files
+                    continue
+
+                gen = Generation.from_dict(gen_data)
+
+                # Track batch size for all generations (rated or not)
+                batch_id = gen.metadata.get("batch_id")
+                if batch_id:
+                    batch_counts[batch_id] = batch_counts.get(batch_id, 0) + 1
+
+                # Only collect unrated generations
+                if gen.id not in rated_ids:
+                    batch_index = gen.metadata.get("batch_index", 0)
+                    unrated_gens.append((gen, batch_id, batch_index))
+
+        # Build result with batch context
+        result: list[tuple[Generation, dict]] = []
+        for gen, batch_id, batch_index in unrated_gens:
+            batch_context = {
+                "batch_id": batch_id,
+                "batch_index": batch_index,
+                "batch_size": batch_counts.get(batch_id, 1) if batch_id else 1,
+            }
+            result.append((gen, batch_context))
+
+        # Sort by timestamp descending (most recent first)
+        result.sort(key=lambda x: x[0].timestamp, reverse=True)
+
+        return result
