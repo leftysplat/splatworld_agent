@@ -26,3 +26,14 @@ class ImageGenerator(ABC):
     def name(self) -> str:
         """Return the generator name."""
         pass
+
+
+# Lazy imports to avoid loading all generators at startup
+def get_nano_generator():
+    from .nano import NanoGenerator
+    return NanoGenerator
+
+
+def get_gemini_generator():
+    from .gemini import GeminiGenerator
+    return GeminiGenerator

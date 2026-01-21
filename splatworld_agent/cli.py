@@ -4,21 +4,25 @@ CLI for SplatWorld Agent.
 This CLI is called by Claude Code slash commands to perform operations.
 """
 
+import base64
 import click
 from datetime import datetime
 from pathlib import Path
 import json
 import sys
+import uuid
 
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from splatworld_agent import __version__
 from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR
 from splatworld_agent.profile import ProfileManager
-from splatworld_agent.models import TasteProfile, Feedback
+from splatworld_agent.models import TasteProfile, Feedback, Generation
+from splatworld_agent.learning import LearningEngine, enhance_prompt
 
 console = Console()
 
@@ -57,7 +61,9 @@ def init(path: str):
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--seed", type=int, help="Random seed for reproducibility")
 @click.option("--no-enhance", is_flag=True, help="Don't enhance prompt with taste profile")
-def generate(prompt: tuple, seed: int, no_enhance: bool):
+@click.option("--no-splat", is_flag=True, help="Skip 3D splat generation")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
+def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generator: str):
     """Generate image and splat from a prompt."""
     prompt_text = " ".join(prompt)
 
@@ -82,22 +88,122 @@ def generate(prompt: tuple, seed: int, no_enhance: bool):
     # Enhance prompt with taste profile
     enhanced_prompt = prompt_text
     if not no_enhance:
-        taste_context = profile.to_prompt_context()
-        if taste_context:
-            enhanced_prompt = f"{prompt_text}. {taste_context}"
+        enhanced_prompt = enhance_prompt(prompt_text, profile)
+        if enhanced_prompt != prompt_text:
             console.print(f"[dim]Original prompt:[/dim] {prompt_text}")
-            console.print(f"[dim]Enhanced with taste:[/dim] {taste_context}")
+            console.print(f"[dim]Enhanced:[/dim] {enhanced_prompt}")
 
     console.print(f"\n[bold]Generating:[/bold] {enhanced_prompt}")
-    console.print(f"[dim]Seed: {seed or 'random'}[/dim]")
 
-    # TODO: Implement actual generation
-    # 1. Call image generator (Nano/Gemini)
-    # 2. Call Marble API for 3D conversion
-    # 3. Download and save assets
-    # 4. Create Generation record
+    # Create generation ID
+    gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    console.print("\n[yellow]Generation not yet implemented. Core structure ready.[/yellow]")
+    # Select image generator
+    gen_name = generator or config.defaults.image_generator
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            # Step 1: Generate image
+            task = progress.add_task(f"Generating image with {gen_name}...", total=None)
+
+            if gen_name == "nano":
+                from splatworld_agent.generators.nano import NanoGenerator
+                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+            else:
+                from splatworld_agent.generators.gemini import GeminiGenerator
+                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+
+            image_bytes = img_gen.generate(enhanced_prompt, seed=seed)
+            img_gen.close()
+
+            progress.update(task, description="[green]Image generated!")
+
+            # Save the generation
+            gen_dir = manager.save_generation(Generation(
+                id=gen_id,
+                prompt=prompt_text,
+                enhanced_prompt=enhanced_prompt,
+                timestamp=datetime.now(),
+                metadata={"generator": gen_name, "seed": seed},
+            ))
+
+            # Save image
+            image_path = gen_dir / "source.png"
+            with open(image_path, "wb") as f:
+                f.write(image_bytes)
+
+            console.print(f"\n[green]Image saved:[/green] {image_path}")
+
+            # Step 2: Convert to 3D splat (if requested)
+            splat_path = None
+            mesh_path = None
+
+            if not no_splat and config.api_keys.marble:
+                progress.update(task, description="Converting to 3D splat...")
+
+                from splatworld_agent.core.marble import MarbleClient
+
+                marble = MarbleClient(api_key=config.api_keys.marble)
+
+                def on_progress(status: str, description: str):
+                    progress.update(task, description=f"Marble: {description or status}")
+
+                image_b64 = base64.b64encode(image_bytes).decode()
+                result = marble.generate_and_wait(
+                    image_base64=image_b64,
+                    mime_type="image/png",
+                    display_name=gen_id,
+                    is_panorama=True,
+                    on_progress=on_progress,
+                )
+
+                # Download splat file
+                if result.splat_url and config.defaults.download_splats:
+                    splat_path = gen_dir / "scene.spz"
+                    marble.download_file(result.splat_url, splat_path)
+                    console.print(f"[green]Splat saved:[/green] {splat_path}")
+
+                # Download mesh file
+                if result.mesh_url and config.defaults.download_meshes:
+                    mesh_path = gen_dir / "collision.glb"
+                    marble.download_file(result.mesh_url, mesh_path)
+                    console.print(f"[green]Mesh saved:[/green] {mesh_path}")
+
+                marble.close()
+
+                console.print(f"[blue]Viewer:[/blue] {result.viewer_url}")
+                console.print(f"[dim]Cost: ${result.cost_usd:.2f}[/dim]")
+
+                progress.update(task, description="[green]3D conversion complete!")
+
+            elif not no_splat and not config.api_keys.marble:
+                console.print("[yellow]Skipping 3D conversion (no Marble API key configured)[/yellow]")
+
+            # Update generation metadata with paths
+            metadata_path = gen_dir / "metadata.json"
+            with open(metadata_path) as f:
+                gen_data = json.load(f)
+
+            gen_data["source_image_path"] = str(image_path)
+            if splat_path:
+                gen_data["splat_path"] = str(splat_path)
+            if mesh_path:
+                gen_data["mesh_path"] = str(mesh_path)
+
+            with open(metadata_path, "w") as f:
+                json.dump(gen_data, f, indent=2)
+
+        console.print(f"\n[bold green]Generation complete![/bold green]")
+        console.print(f"[dim]ID: {gen_id}[/dim]")
+        console.print("\nUse [cyan]splatworld-agent feedback ++[/cyan] to love it, or [cyan]-- [/cyan] to hate it.")
+
+    except Exception as e:
+        console.print(f"\n[red]Generation failed:[/red] {e}")
+        sys.exit(1)
 
 
 @main.command()
@@ -322,7 +428,8 @@ def history(limit: int):
 
 
 @main.command()
-def learn():
+@click.option("--dry-run", is_flag=True, help="Show what would be learned without saving")
+def learn(dry_run: bool):
     """Synthesize feedback into updated preferences."""
     project_dir = get_project_dir()
     if not project_dir:
@@ -330,21 +437,103 @@ def learn():
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
+    config = Config.load()
+
+    if not config.api_keys.anthropic:
+        console.print("[red]Error: Anthropic API key required for learning. Set ANTHROPIC_API_KEY.[/red]")
+        sys.exit(1)
+
     feedback_history = manager.get_feedback_history()
 
     if len(feedback_history) < 3:
         console.print("[yellow]Need at least 3 feedback entries to learn patterns.[/yellow]")
+        console.print(f"[dim]Current feedback count: {len(feedback_history)}[/dim]")
         return
 
-    console.print(f"Analyzing {len(feedback_history)} feedback entries...")
+    # Get generations that have feedback
+    generations = []
+    for fb in feedback_history:
+        gen = manager.get_generation(fb.generation_id)
+        if gen:
+            generations.append(gen)
 
-    # TODO: Implement actual learning
-    # 1. Load Claude API
-    # 2. Send feedback history for analysis
-    # 3. Extract preference patterns
-    # 4. Update profile
+    if not generations:
+        console.print("[yellow]No generations found with feedback.[/yellow]")
+        return
 
-    console.print("\n[yellow]Learning not yet implemented. Core structure ready.[/yellow]")
+    console.print(f"Analyzing {len(feedback_history)} feedback entries from {len(generations)} generations...")
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Analyzing patterns with Claude...", total=None)
+
+            engine = LearningEngine(api_key=config.api_keys.anthropic)
+            profile = manager.load_profile()
+
+            result = engine.synthesize_from_history(generations, feedback_history, profile)
+
+            progress.update(task, description="[green]Analysis complete!")
+
+        # Show analysis
+        console.print(f"\n[bold]Analysis:[/bold]")
+        console.print(result.get("analysis", "No analysis provided"))
+
+        # Show updates
+        updates = result.get("updates", {})
+        if not updates:
+            console.print("\n[yellow]No preference updates identified.[/yellow]")
+            return
+
+        console.print(f"\n[bold]Suggested Updates:[/bold]")
+
+        if "visual_style" in updates:
+            console.print("\n[cyan]Visual Style:[/cyan]")
+            for key, val in updates["visual_style"].items():
+                if val.get("preference"):
+                    console.print(f"  {key}: prefer '{val['preference']}'")
+                if val.get("avoid"):
+                    console.print(f"  {key}: avoid '{val['avoid']}'")
+
+        if "composition" in updates:
+            console.print("\n[cyan]Composition:[/cyan]")
+            for key, val in updates["composition"].items():
+                if val.get("preference"):
+                    console.print(f"  {key}: prefer '{val['preference']}'")
+                if val.get("avoid"):
+                    console.print(f"  {key}: avoid '{val['avoid']}'")
+
+        if "domain" in updates:
+            console.print("\n[cyan]Domain:[/cyan]")
+            dom = updates["domain"]
+            if dom.get("environments", {}).get("add"):
+                console.print(f"  Add environments: {dom['environments']['add']}")
+            if dom.get("avoid_environments", {}).get("add"):
+                console.print(f"  Avoid environments: {dom['avoid_environments']['add']}")
+
+        if "quality" in updates:
+            console.print("\n[cyan]Quality:[/cyan]")
+            qual = updates["quality"]
+            if qual.get("must_have", {}).get("add"):
+                console.print(f"  Must have: {qual['must_have']['add']}")
+            if qual.get("never", {}).get("add"):
+                console.print(f"  Never: {qual['never']['add']}")
+
+        if dry_run:
+            console.print("\n[yellow]Dry run - no changes saved.[/yellow]")
+        else:
+            # Apply updates
+            updated_profile = engine.apply_updates(profile, updates)
+            manager.save_profile(updated_profile)
+            console.print("\n[bold green]Profile updated![/bold green]")
+            console.print("[dim]Use 'splatworld-agent profile' to view your updated taste profile.[/dim]")
+
+    except Exception as e:
+        console.print(f"\n[red]Learning failed:[/red] {e}")
+        sys.exit(1)
 
 
 @main.command("install-prompts")
