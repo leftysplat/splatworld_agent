@@ -1,7 +1,7 @@
 ---
 name: splatworld-agent:init
 description: Initialize .splatworld/ in current project directory
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
 <objective>
@@ -10,51 +10,48 @@ Initialize a new SplatWorld Agent project. Collect API keys first, then create t
 
 ## Your task
 
-### Step 1: Welcome and collect API keys
+### Step 1: Ask for API keys
 
-First, welcome the user and ask for their API keys. Use AskUserQuestion with text input fields.
+Tell the user you need 3 API keys to set up SplatWorld Agent, then ask them to paste each one.
 
-Say something like:
-"I'll help you set up SplatWorld Agent. First, I need your API keys to enable image generation, learning, and 3D conversion."
+Say:
+"I'll set up SplatWorld Agent for you. Please paste your API keys one at a time:
 
-Then use AskUserQuestion to collect:
+**Anthropic API key** (for taste learning):"
 
-**Question 1:** "Please provide your API keys to get started:"
-- Option for Anthropic API key (for learning/taste synthesis)
-- Option for Google API key (for Nano Banana Pro image generation)
-- Option for World Labs API key (for 3D splat conversion)
+Wait for the user to paste their Anthropic key.
 
-Note: The user can select "Other" to paste each key. Collect all three keys.
+Then ask:
+"**Google API key** (for Nano Banana Pro image generation):"
+
+Wait for the user to paste their Google key.
+
+Then ask:
+"**World Labs API key** (for 3D splat conversion):"
+
+Wait for the user to paste their World Labs key.
 
 ### Step 2: Save the API keys
 
-Once you have the keys from the user, save them:
+Once you have all three keys, save them:
 
 ```bash
 export PYTHONPATH=~/.claude/splatworld-agent
 python3 -m splatworld_agent.cli setup-keys --anthropic "ANTHROPIC_KEY" --google "GOOGLE_KEY" --worldlabs "WORLDLABS_KEY"
 ```
 
-Replace the placeholder values with the actual keys the user provided.
+Replace the placeholders with the actual keys the user provided.
 
-### Step 3: Verify keys were saved
-
-```bash
-export PYTHONPATH=~/.claude/splatworld-agent
-python3 -m splatworld_agent.cli check-keys
-```
-
-### Step 4: Initialize the project
+### Step 3: Initialize the project
 
 ```bash
 export PYTHONPATH=~/.claude/splatworld-agent
 python3 -m splatworld_agent.cli init
 ```
 
-### Step 5: Confirm success
+### Step 4: Confirm success
 
 Tell the user:
-1. ✓ API keys configured
-2. ✓ .splatworld/ folder created
-3. Next step: Run `/splatworld-agent:train "your prompt"` to calibrate your taste profile
-4. They need 20 rated images before the profile is calibrated
+- ✓ API keys configured
+- ✓ .splatworld/ folder created
+- Next: Run `/splatworld-agent:train "your prompt"` to start training (20 images needed)
