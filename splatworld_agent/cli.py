@@ -19,7 +19,7 @@ from rich.syntax import Syntax
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from splatworld_agent import __version__
-from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR
+from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE
 from splatworld_agent.profile import ProfileManager
 from splatworld_agent.models import TasteProfile, Feedback, Generation
 from splatworld_agent.learning import LearningEngine, enhance_prompt
