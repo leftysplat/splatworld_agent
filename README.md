@@ -41,12 +41,16 @@ The installer will:
 ### Manual Install
 
 ```bash
-# Clone the repository
+# Clone and install (stays in current directory after)
+git clone https://github.com/leftysplat/splatworld_agent.git && (cd splatworld_agent && ./install.sh)
+```
+
+Or step by step:
+```bash
 git clone https://github.com/leftysplat/splatworld_agent.git
 cd splatworld_agent
-
-# Run the installer
 ./install.sh
+cd ..
 ```
 
 ### Updating

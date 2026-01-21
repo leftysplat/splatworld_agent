@@ -10,6 +10,9 @@
 
 set -e
 
+# Save original directory to return to after install
+ORIGINAL_DIR="$(pwd)"
+
 # Parse arguments
 AUTO_YES=false
 for arg in "$@"; do
@@ -213,6 +216,11 @@ setup_claude() {
 
 # Print completion message
 print_done() {
+    # Return to original directory if we cd'd into the repo
+    if [ -n "$ORIGINAL_DIR" ] && [ "$ORIGINAL_DIR" != "$(pwd)" ]; then
+        cd "$ORIGINAL_DIR"
+    fi
+
     echo ""
     echo -e "  ${GREEN}Installation complete!${RESET}"
     echo ""
@@ -220,9 +228,9 @@ print_done() {
     echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld-agent"
     echo ""
     echo -e "  ${YELLOW}Next steps:${RESET}"
-    echo -e "  1. Restart Claude Code (or start a new conversation)"
+    echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
     echo -e "  2. Run ${CYAN}/splatworld-agent:help${RESET} to see available commands"
-    echo -e "  3. Run ${CYAN}/splatworld-agent:init${RESET} in a project directory"
+    echo -e "  3. Run ${CYAN}/splatworld-agent:init${RESET} to initialize a project"
     echo ""
     echo -e "  ${YELLOW}To update later:${RESET}"
     echo -e "  Run ${CYAN}/splatworld-agent:update${RESET} in Claude Code"
