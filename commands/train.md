@@ -5,37 +5,74 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
 <objective>
-Run guided training to calibrate the taste profile.
-
-This generates images in rounds, prompts for ratings, and learns preferences until the profile is calibrated (20+ rated images with good distribution).
+Run guided training to calibrate the taste profile by generating creative variations of the user's prompt.
 </objective>
 
 ## Arguments
 
-The user should provide a prompt describing what kind of images to generate for training.
+The user provides a base prompt/concept. You will expand it into varied, detailed prompts.
 
-Example: `/splatworld-agent:train "cozy cabin interior with warm lighting"`
+Example: `/splatworld-agent:train "beach on an alien world"`
 
 ## Your task
 
-1. Extract the prompt from the user's command
-2. Set up environment variables and run the train command:
+### Step 1: Create prompt variations
+
+Take the user's base concept and create 5 unique, detailed prompt variations. Each should:
+- Keep the core concept but explore different interpretations
+- Add specific details (lighting, atmosphere, colors, time of day, weather, materials)
+- Vary the mood and style (serene vs dramatic, minimal vs detailed)
+- Be 1-2 sentences, vivid and specific
+
+Example for "beach on an alien world":
+1. "A serene beach with bioluminescent turquoise sand beside a deep purple ocean, twin moons reflecting on gentle waves, alien flora dotting the shoreline"
+2. "Dramatic rocky alien coastline with towering crystalline formations, violent green waves crashing against obsidian cliffs under a stormy orange sky"
+3. "Minimalist alien beach at dawn, pale pink sand stretching to a mercury-like silver ocean, a single massive ringed planet dominating the horizon"
+4. "Lush tropical alien beach with oversized iridescent shells scattered on golden sand, phosphorescent tide pools, dense alien jungle meeting the shore"
+5. "Frozen alien beach where a methane ocean meets ammonia ice sheets, strange geometric ice formations, dim distant sun casting long blue shadows"
+
+### Step 2: Generate images for each variation
+
+For each of your 5 prompt variations, run:
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli train "USER_PROMPT_HERE"
+export PYTHONPATH=~/.claude/splatworld-agent
+python3 -m splatworld_agent.cli generate "YOUR_DETAILED_PROMPT_HERE" --no-splat
 ```
 
-The training is interactive - images will open for the user to review and rate.
+Show the user each image as it's generated.
 
-Rating options:
-- ++ = love it
-- + = like it
-- - = not great
-- -- = hate it
-- s = skip
-- q = quit
+### Step 3: Collect ratings
 
-Training continues until 20+ images are rated with at least 10% positive and 10% negative feedback.
+After showing each image, ask the user to rate it:
+- **++** = love it
+- **+** = like it
+- **-** = not great
+- **--** = hate it
 
-Note: Requires ANTHROPIC_API_KEY, NANOBANANA_API_KEY (or GOOGLE_API_KEY), and optionally WORLDLABS_API_KEY environment variables.
+Record their feedback:
+
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent
+python3 -m splatworld_agent.cli feedback RATING
+```
+
+### Step 4: Continue or learn
+
+After 5 images:
+- If the user wants more, create 5 new variations and repeat
+- Once they have 20+ ratings, run learn:
+
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent
+python3 -m splatworld_agent.cli learn
+```
+
+### Step 5: Check calibration
+
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent
+python3 -m splatworld_agent.cli profile
+```
+
+Training is complete when the profile shows "CALIBRATED" (20+ ratings with good positive/negative mix).
