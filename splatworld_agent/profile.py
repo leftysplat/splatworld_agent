@@ -110,6 +110,73 @@ class ProfileManager:
 
         self.save_profile(profile)
 
+    def _increment_rating_stat(self, profile: TasteProfile, rating: str) -> None:
+        """Increment the counter for a rating type."""
+        if rating == "++":
+            profile.stats.love_count += 1
+        elif rating == "+":
+            profile.stats.like_count += 1
+        elif rating == "-":
+            profile.stats.dislike_count += 1
+        elif rating == "--":
+            profile.stats.hate_count += 1
+
+    def _decrement_rating_stat(self, profile: TasteProfile, rating: str) -> None:
+        """Decrement the counter for a rating type, flooring at 0."""
+        if rating == "++":
+            profile.stats.love_count = max(0, profile.stats.love_count - 1)
+        elif rating == "+":
+            profile.stats.like_count = max(0, profile.stats.like_count - 1)
+        elif rating == "-":
+            profile.stats.dislike_count = max(0, profile.stats.dislike_count - 1)
+        elif rating == "--":
+            profile.stats.hate_count = max(0, profile.stats.hate_count - 1)
+
+    def add_or_replace_feedback(self, feedback: Feedback) -> tuple[bool, Optional[str]]:
+        """Add feedback, replacing any existing for the same generation.
+
+        Returns (was_replacement, old_rating).
+        - was_replacement: True if this replaced an existing rating
+        - old_rating: The previous rating if replaced, None if new
+        """
+        existing = self.get_feedback_history()
+
+        # Find and remove existing feedback for this generation
+        old_rating = None
+        filtered = []
+        for fb in existing:
+            if fb.generation_id == feedback.generation_id:
+                old_rating = fb.rating
+            else:
+                filtered.append(fb)
+
+        # Add new feedback
+        filtered.append(feedback)
+
+        # Atomic rewrite of feedback file
+        temp_path = self.feedback_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            for fb in filtered:
+                f.write(json.dumps(fb.to_dict()) + "\n")
+        temp_path.replace(self.feedback_path)
+
+        # Update profile stats
+        profile = self.load_profile()
+
+        if old_rating:
+            # This is a re-rate: adjust category counts but not total
+            self._decrement_rating_stat(profile, old_rating)
+        else:
+            # New rating: increment total count
+            profile.stats.feedback_count += 1
+
+        # Always increment the new rating category
+        self._increment_rating_stat(profile, feedback.rating)
+
+        self.save_profile(profile)
+
+        return (old_rating is not None, old_rating)
+
     def get_feedback_history(self, limit: Optional[int] = None) -> list[Feedback]:
         """Get feedback history, optionally limited to most recent."""
         if not self.feedback_path.exists():
@@ -410,3 +477,14 @@ class ProfileManager:
             if gen:
                 generations.append(gen)
         return generations
+
+    def get_unrated_in_batch(self, batch_generation_ids: list[str]) -> list[int]:
+        """Get 1-indexed image numbers in batch that haven't been rated."""
+        feedbacks = {f.generation_id for f in self.get_feedback_history()}
+
+        unrated = []
+        for i, gen_id in enumerate(batch_generation_ids, start=1):
+            if gen_id not in feedbacks:
+                unrated.append(i)
+
+        return unrated
