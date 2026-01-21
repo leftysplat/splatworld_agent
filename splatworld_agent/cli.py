@@ -9,6 +9,7 @@ import click
 from datetime import datetime
 from pathlib import Path
 import json
+import re
 import sys
 import uuid
 
@@ -25,6 +26,22 @@ from splatworld_agent.models import TasteProfile, Feedback, Generation
 from splatworld_agent.learning import LearningEngine, enhance_prompt
 
 console = Console()
+
+
+def parse_batch_ratings(input_str: str) -> list[tuple[int, str]]:
+    """Parse '1 ++ 2 - 3 -- 4 +' into [(1, '++'), (2, '-'), (3, '--'), (4, '+')].
+
+    Handles:
+    - Spaces between number and rating: "1 ++"
+    - No spaces: "1++"
+    - Mixed: "1++ 2 -"
+
+    Returns list of (image_number, rating) tuples.
+    """
+    # CRITICAL: Check ++ and -- before + and - (longer match first)
+    pattern = r'(\d+)\s*(\+\+|--|\+|-)'
+    matches = re.findall(pattern, input_str)
+    return [(int(num), rating) for num, rating in matches]
 
 
 @click.group()
