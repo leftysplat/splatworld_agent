@@ -57,6 +57,59 @@ def init(path: str):
     ))
 
 
+@main.command("setup-keys")
+@click.option("--anthropic", "anthropic_key", help="Anthropic API key")
+@click.option("--google", "google_key", help="Google API key")
+@click.option("--worldlabs", "worldlabs_key", help="World Labs (Marble) API key")
+@click.option("--nano", "nano_key", help="Nano Banana API key")
+def setup_keys(anthropic_key: str, google_key: str, worldlabs_key: str, nano_key: str):
+    """Configure API keys for SplatWorld Agent."""
+    cfg = Config.load()
+
+    # Update keys if provided
+    if anthropic_key:
+        cfg.api_keys.anthropic = anthropic_key
+    if google_key:
+        cfg.api_keys.google = google_key
+    if worldlabs_key:
+        cfg.api_keys.marble = worldlabs_key
+    if nano_key:
+        cfg.api_keys.nano = nano_key
+
+    # Save config
+    cfg.save()
+
+    console.print(f"[green]API keys saved to {GLOBAL_CONFIG_FILE}[/green]")
+
+    # Show status
+    console.print("\n[bold]API Key Status:[/bold]")
+    console.print(f"  Anthropic: {'[green]configured[/green]' if cfg.api_keys.anthropic else '[red]missing[/red]'}")
+    console.print(f"  Google: {'[green]configured[/green]' if cfg.api_keys.google else '[yellow]missing[/yellow]'}")
+    console.print(f"  World Labs: {'[green]configured[/green]' if cfg.api_keys.marble else '[red]missing[/red]'}")
+    console.print(f"  Nano: {'[green]configured[/green]' if cfg.api_keys.nano else '[yellow]missing[/yellow]'}")
+
+
+@main.command("check-keys")
+def check_keys():
+    """Check API key configuration status."""
+    cfg = Config.load()
+    issues = cfg.validate()
+
+    console.print("[bold]API Key Status:[/bold]")
+    console.print(f"  Anthropic: {'[green]configured[/green]' if cfg.api_keys.anthropic else '[red]missing[/red]'}")
+    console.print(f"  Google: {'[green]configured[/green]' if cfg.api_keys.google else '[yellow]missing[/yellow]'}")
+    console.print(f"  World Labs (Marble): {'[green]configured[/green]' if cfg.api_keys.marble else '[red]missing[/red]'}")
+    console.print(f"  Nano: {'[green]configured[/green]' if cfg.api_keys.nano else '[yellow]missing[/yellow]'}")
+
+    if issues:
+        console.print("\n[red]Missing required keys:[/red]")
+        for issue in issues:
+            console.print(f"  - {issue}")
+        sys.exit(1)
+    else:
+        console.print("\n[green]All required keys configured![/green]")
+
+
 @main.command()
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--seed", type=int, help="Random seed for reproducibility")
