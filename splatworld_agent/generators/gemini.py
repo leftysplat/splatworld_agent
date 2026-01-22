@@ -1,8 +1,8 @@
 """
-Gemini 2.0 Flash image generator for SplatWorld Agent.
+Imagen 3 image generator for SplatWorld Agent.
 
-Alternative to Nano Banana Pro. Uses the standard Gemini 2.0 Flash model
-which is available on the free tier.
+Alternative to Nano Banana Pro. Uses Google's Imagen 3 model
+for image generation via the Gemini API.
 """
 
 import base64
@@ -14,22 +14,22 @@ import httpx
 from . import ImageGenerator
 
 
-# Gemini 2.0 Flash API configuration
-GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+# Imagen 3 API configuration
+IMAGEN_MODEL = "imagen-3.0-generate-002"
+IMAGEN_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGEN_MODEL}:predict"
 
 
 class GeminiGenerator(ImageGenerator):
     """
-    Gemini 2.0 Flash image generator.
+    Imagen 3 image generator (via Gemini API).
 
-    Uses Google's Gemini 2.0 Flash model. Available on free tier.
-    Good quality but not as high-res as Nano Banana Pro.
+    Uses Google's Imagen 3 model for image generation.
+    Good quality, widely available.
     """
 
     def __init__(self, api_key: Optional[str] = None):
         """
-        Initialize the Gemini generator.
+        Initialize the Gemini/Imagen generator.
 
         Args:
             api_key: Google API key. If not provided, reads from GOOGLE_API_KEY env var.
@@ -51,11 +51,11 @@ class GeminiGenerator(ImageGenerator):
         seed: Optional[int] = None,
     ) -> bytes:
         """
-        Generate an image from a prompt.
+        Generate an image from a prompt using Imagen 3.
 
         Args:
             prompt: The generation prompt
-            seed: Optional random seed (not directly supported)
+            seed: Optional random seed
 
         Returns:
             Image bytes (PNG format)
@@ -63,36 +63,41 @@ class GeminiGenerator(ImageGenerator):
         # Build the full prompt with quality keywords
         full_prompt = f"high resolution detailed photograph: {prompt}"
 
+        # Build request payload for Imagen 3
+        payload = {
+            "instances": [{"prompt": full_prompt}],
+            "parameters": {
+                "sampleCount": 1,
+                "aspectRatio": "16:9",
+            }
+        }
+
+        if seed is not None:
+            payload["parameters"]["seed"] = seed
+
         # Make API request
         response = self._client.post(
-            f"{GEMINI_API_URL}?key={self.api_key}",
-            json={
-                "contents": [{
-                    "parts": [{"text": full_prompt}]
-                }],
-                "generationConfig": {
-                    "responseModalities": ["TEXT", "IMAGE"],
-                }
-            },
+            f"{IMAGEN_API_URL}?key={self.api_key}",
+            json=payload,
             headers={"Content-Type": "application/json"},
         )
 
         if not response.is_success:
-            raise RuntimeError(f"Gemini API error {response.status_code}: {response.text}")
+            raise RuntimeError(f"Imagen API error {response.status_code}: {response.text}")
 
         data = response.json()
 
         # Extract image from response
-        if data.get("candidates") and data["candidates"][0].get("content", {}).get("parts"):
-            for part in data["candidates"][0]["content"]["parts"]:
-                if part.get("inlineData", {}).get("mimeType", "").startswith("image/"):
-                    return base64.b64decode(part["inlineData"]["data"])
+        if data.get("predictions"):
+            for prediction in data["predictions"]:
+                if prediction.get("bytesBase64Encoded"):
+                    return base64.b64decode(prediction["bytesBase64Encoded"])
 
         # Check for error
         if data.get("error"):
-            raise RuntimeError(f"Gemini API error: {data['error'].get('message', 'Unknown error')}")
+            raise RuntimeError(f"Imagen API error: {data['error'].get('message', 'Unknown error')}")
 
-        raise RuntimeError("No image found in Gemini API response")
+        raise RuntimeError("No image found in Imagen API response")
 
     def close(self):
         """Close the HTTP client."""
