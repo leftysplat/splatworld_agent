@@ -1,8 +1,8 @@
 """
-Gemini 2.0 Flash image generator for SplatWorld Agent.
+Gemini 2.5 Flash image generator for SplatWorld Agent.
 
-Alternative to Nano Banana Pro. Uses Gemini 2.0 Flash Experimental
-with native image generation via the Gemini API.
+Alternative to Nano Banana Pro. Uses Gemini 2.5 Flash Preview Image
+for image generation via the Gemini API.
 """
 
 import base64
@@ -14,17 +14,17 @@ import httpx
 from . import ImageGenerator
 
 
-# Gemini 2.0 Flash Experimental - supports native image generation
-GEMINI_MODEL = "gemini-2.0-flash-exp"
+# Gemini 2.5 Flash Preview Image - latest image generation model
+GEMINI_MODEL = "gemini-2.5-flash-preview-image"
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
 class GeminiGenerator(ImageGenerator):
     """
-    Gemini 2.0 Flash image generator.
+    Gemini 2.5 Flash image generator.
 
-    Uses Google's Gemini 2.0 Flash Experimental model for native image generation.
-    Available through the standard Gemini API (not Vertex AI).
+    Uses Google's Gemini 2.5 Flash Preview Image model for image generation.
+    Available through the standard Gemini API.
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -51,7 +51,7 @@ class GeminiGenerator(ImageGenerator):
         seed: Optional[int] = None,
     ) -> bytes:
         """
-        Generate an image from a prompt using Gemini 2.0 Flash.
+        Generate an image from a prompt using Gemini 2.5 Flash.
 
         Args:
             prompt: The generation prompt
