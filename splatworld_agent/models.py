@@ -371,6 +371,7 @@ class Generation:
     source_image_path: Optional[str] = None
     splat_path: Optional[str] = None
     mesh_path: Optional[str] = None
+    viewer_url: Optional[str] = None
     metadata: dict = field(default_factory=dict)
     feedback: Optional["Feedback"] = None
 
@@ -383,6 +384,7 @@ class Generation:
             "source_image_path": self.source_image_path,
             "splat_path": self.splat_path,
             "mesh_path": self.mesh_path,
+            "viewer_url": self.viewer_url,
             "metadata": self.metadata,
             "feedback": self.feedback.to_dict() if self.feedback else None,
         }
@@ -397,6 +399,7 @@ class Generation:
             source_image_path=data.get("source_image_path"),
             splat_path=data.get("splat_path"),
             mesh_path=data.get("mesh_path"),
+            viewer_url=data.get("viewer_url"),
             metadata=data.get("metadata", {}),
             feedback=Feedback.from_dict(data["feedback"]) if data.get("feedback") else None,
         )
