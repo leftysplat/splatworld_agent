@@ -10,7 +10,7 @@ from typing import Optional
 
 from anthropic import Anthropic
 
-from .models import TasteProfile, Feedback, Generation, StylePreference, PromptVariant
+from .models import TasteProfile, Feedback, Generation, StylePreference, PromptVariant, ExplorationMode
 
 
 SYNTHESIS_SYSTEM_PROMPT = """You are a taste profile analyzer for a 3D scene generation system.
@@ -316,7 +316,7 @@ def enhance_prompt(prompt: str, profile: TasteProfile) -> str:
     return enhanced
 
 
-VARIANT_SYSTEM_PROMPT = """You are a prompt variant generator for a 3D scene generation system.
+VARIANT_SYSTEM_PROMPT_BASE = """You are a prompt variant generator for a 3D scene generation system.
 Your job is to create variations of user prompts that explore their preferences based on feedback patterns.
 
 CRITICAL RULES:
@@ -330,12 +330,6 @@ You will receive:
 2. Recent feedback history (what they liked/disliked)
 3. Their current taste profile
 
-Generate a variant that:
-- Keeps ALL elements from the base prompt
-- Adds enhancements based on positive feedback patterns
-- Avoids elements from negative feedback patterns
-- Stays anchored to the original concept (no drift into unrelated ideas)
-
 Respond with a JSON object:
 {
     "variant_prompt": "The full enhanced prompt text",
@@ -347,6 +341,43 @@ Respond with a JSON object:
 The "reasoning" field should be conversational and explain your thinking in 1-2 sentences.
 Start with phrases like "You seem to like...", "Based on your preference for...", "Since you rated X highly..."
 """
+
+VARIANT_EXPLORE_WIDE_PROMPT = VARIANT_SYSTEM_PROMPT_BASE + """
+MODE: EXPLORE WIDELY
+
+Your goal is to generate DIVERSE variants that explore DIFFERENT dimensions:
+- Try VERY different lighting styles (dramatic vs soft, warm vs cool, natural vs artificial)
+- Explore contrasting moods (serene vs dynamic, intimate vs epic)
+- Vary composition approaches (close-up vs panoramic, symmetric vs asymmetric)
+- Test different atmosphere types (clear vs misty, day vs night, seasons)
+- Experiment with color palettes (monochromatic vs vibrant, natural vs stylized)
+
+Each variant should feel noticeably different from others while respecting the base prompt.
+Push boundaries - this is about discovery, not refinement.
+
+When generating multiple variants, ensure they explore ORTHOGONAL dimensions.
+For example: one focuses on lighting, another on atmosphere, a third on perspective.
+"""
+
+VARIANT_REFINE_NARROW_PROMPT = VARIANT_SYSTEM_PROMPT_BASE + """
+MODE: REFINE NARROWLY
+
+Your goal is to make SMALL, TARGETED tweaks to what's already working:
+- If user liked "warm lighting", try subtle variations: "golden hour warmth", "amber glow", "soft sunset"
+- Adjust intensity levels: "slightly more", "a touch less", "enhanced but subtle"
+- Fine-tune specific elements that received positive feedback
+- Make incremental improvements, not dramatic changes
+
+Each variant should feel like a minor iteration, not a new direction.
+Think of it like adjusting sliders by 10-20%, not flipping switches.
+
+When generating multiple variants, they should be variations on a THEME.
+For example: all explore subtle differences in the same lighting style the user liked.
+Stay close to what works - this is about perfection, not exploration.
+"""
+
+# Default prompt for backward compatibility
+VARIANT_SYSTEM_PROMPT = VARIANT_EXPLORE_WIDE_PROMPT
 
 
 class PromptAdapter:
@@ -371,6 +402,7 @@ class PromptAdapter:
         base_prompt: str,
         profile: TasteProfile,
         recent_feedback: Optional[list[tuple[Generation, Feedback]]] = None,
+        exploration_mode: ExplorationMode = ExplorationMode.EXPLORE_WIDE,
     ) -> PromptVariant:
         """
         Generate a variant of the base prompt anchored to user preferences.
@@ -379,6 +411,7 @@ class PromptAdapter:
             base_prompt: The user's original prompt (sacred - not to be changed)
             profile: Current taste profile with learned preferences
             recent_feedback: Optional list of (generation, feedback) tuples for context
+            exploration_mode: EXPLORE_WIDE for diverse variants, REFINE_NARROW for targeted tweaks
 
         Returns:
             PromptVariant with the enhanced prompt, modifications list, and reasoning
@@ -388,6 +421,9 @@ class PromptAdapter:
 
         # Build profile context
         profile_context = profile.to_prompt_context() or "No preferences learned yet"
+
+        # Select system prompt based on exploration mode
+        system_prompt = self._get_system_prompt(exploration_mode)
 
         user_message = f"""
 ## Base Prompt (DO NOT modify the core concept)
@@ -406,7 +442,7 @@ Remember: Keep the base prompt's core concept intact, only ADD enhancements.
         response = self.client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
-            system=VARIANT_SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
 
@@ -435,6 +471,7 @@ Remember: Keep the base prompt's core concept intact, only ADD enhancements.
         profile: TasteProfile,
         recent_feedback: Optional[list[tuple[Generation, Feedback]]] = None,
         count: int = 3,
+        exploration_mode: ExplorationMode = ExplorationMode.EXPLORE_WIDE,
     ) -> list[PromptVariant]:
         """
         Generate multiple variants exploring different aspects of preferences.
@@ -444,12 +481,22 @@ Remember: Keep the base prompt's core concept intact, only ADD enhancements.
             profile: Current taste profile
             recent_feedback: Optional feedback context
             count: Number of variants to generate (default 3)
+            exploration_mode: EXPLORE_WIDE for diverse variants, REFINE_NARROW for targeted tweaks
 
         Returns:
             List of PromptVariant objects
         """
         feedback_context = self._build_feedback_context(recent_feedback)
         profile_context = profile.to_prompt_context() or "No preferences learned yet"
+
+        # Select system prompt based on exploration mode
+        system_prompt = self._get_system_prompt(exploration_mode)
+
+        # Adjust instructions based on mode
+        if exploration_mode == ExplorationMode.EXPLORE_WIDE:
+            mode_instruction = "Generate {count} DIFFERENT variants that each explore ORTHOGONAL dimensions."
+        else:
+            mode_instruction = "Generate {count} SUBTLE variants that each make small targeted tweaks to what works."
 
         user_message = f"""
 ## Base Prompt (DO NOT modify the core concept)
@@ -461,8 +508,8 @@ Remember: Keep the base prompt's core concept intact, only ADD enhancements.
 ## Current Taste Profile
 {profile_context}
 
-Generate {count} DIFFERENT variants that each explore different aspects of the user's preferences.
-Each variant should enhance the base prompt in a unique way.
+{mode_instruction.format(count=count)}
+Each variant should enhance the base prompt according to the current mode.
 
 Respond with a JSON array:
 [
@@ -479,7 +526,7 @@ Respond with a JSON array:
         response = self.client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2048,
-            system=VARIANT_SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
 
@@ -530,6 +577,12 @@ Respond with a JSON array:
                 lines.append(f"  Comment: {fb.text}")
 
         return "\n".join(lines) if lines else "No recent feedback available"
+
+    def _get_system_prompt(self, mode: ExplorationMode) -> str:
+        """Get the system prompt for the given exploration mode."""
+        if mode == ExplorationMode.REFINE_NARROW:
+            return VARIANT_REFINE_NARROW_PROMPT
+        return VARIANT_EXPLORE_WIDE_PROMPT
 
     def explain_variant(self, variant: PromptVariant) -> str:
         """

@@ -4,9 +4,33 @@ Data models for SplatWorld Agent.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 import json
+
+
+class ExplorationMode(Enum):
+    """Exploration mode for prompt variant generation.
+
+    Implements MODE-01/MODE-02:
+    - EXPLORE_WIDE: Generate diverse variants across multiple dimensions
+    - REFINE_NARROW: Make small targeted tweaks to successful elements
+    """
+
+    EXPLORE_WIDE = "explore"
+    REFINE_NARROW = "refine"
+
+    @classmethod
+    def from_string(cls, value: str) -> "ExplorationMode":
+        """Parse mode from string (case-insensitive)."""
+        value = value.lower().strip()
+        if value in ("explore", "wide", "explore_wide", "explore-wide"):
+            return cls.EXPLORE_WIDE
+        elif value in ("refine", "narrow", "refine_narrow", "refine-narrow"):
+            return cls.REFINE_NARROW
+        else:
+            raise ValueError(f"Unknown exploration mode: {value}. Use 'explore' or 'refine'.")
 
 
 @dataclass
