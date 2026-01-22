@@ -9,6 +9,7 @@ from splatworld_agent.models import (
     VisualStyle,
     Feedback,
     Generation,
+    ExplorationMode,
 )
 
 
@@ -96,3 +97,30 @@ class TestGeneration:
         )
         assert gen.id == "test-001"
         assert gen.prompt == "modern kitchen"
+
+
+class TestExplorationMode:
+    def test_enum_values(self):
+        assert ExplorationMode.EXPLORE_WIDE.value == "explore"
+        assert ExplorationMode.REFINE_NARROW.value == "refine"
+
+    def test_from_string_explore_variants(self):
+        # Test all explore variants
+        assert ExplorationMode.from_string("explore") == ExplorationMode.EXPLORE_WIDE
+        assert ExplorationMode.from_string("wide") == ExplorationMode.EXPLORE_WIDE
+        assert ExplorationMode.from_string("explore_wide") == ExplorationMode.EXPLORE_WIDE
+        assert ExplorationMode.from_string("explore-wide") == ExplorationMode.EXPLORE_WIDE
+        assert ExplorationMode.from_string("EXPLORE") == ExplorationMode.EXPLORE_WIDE
+
+    def test_from_string_refine_variants(self):
+        # Test all refine variants
+        assert ExplorationMode.from_string("refine") == ExplorationMode.REFINE_NARROW
+        assert ExplorationMode.from_string("narrow") == ExplorationMode.REFINE_NARROW
+        assert ExplorationMode.from_string("refine_narrow") == ExplorationMode.REFINE_NARROW
+        assert ExplorationMode.from_string("refine-narrow") == ExplorationMode.REFINE_NARROW
+        assert ExplorationMode.from_string("REFINE") == ExplorationMode.REFINE_NARROW
+
+    def test_from_string_invalid(self):
+        with pytest.raises(ValueError) as exc_info:
+            ExplorationMode.from_string("invalid")
+        assert "Unknown exploration mode" in str(exc_info.value)
