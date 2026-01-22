@@ -364,6 +364,14 @@ black splatworld_agent/
 ruff check splatworld_agent/
 ```
 
+## Image Rating Workflows
+
+For detailed documentation on viewing and rating images, see [docs/USAGE.md](splatworld_agent/docs/USAGE.md).
+
+**Quick summary:**
+- **Default mode:** Images saved to `.splatworld/generations/`. Open in Finder/viewer, rate by number.
+- **Inline mode:** Add `--inline` flag for terminal image previews (iTerm2/Kitty/WezTerm only).
+
 ## Troubleshooting
 
 ### "Profile not found"
