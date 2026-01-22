@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from splatworld_agent.models import TasteProfile, Generation, Feedback, Exemplar, Session
+from splatworld_agent.models import TasteProfile, Generation, Feedback, Exemplar, Session, PromptHistoryEntry
 from splatworld_agent.config import PROJECT_DIR_NAME
 
 
@@ -18,6 +18,7 @@ class ProfileManager:
     PROFILE_FILE = "profile.json"
     FEEDBACK_FILE = "feedback.jsonl"
     SESSIONS_FILE = "sessions.jsonl"
+    PROMPT_HISTORY_FILE = "prompt_history.jsonl"  # HIST-01: Track prompt variants with ratings
     CURRENT_SESSION_FILE = "current_session.json"
     GENERATIONS_DIR = "generations"  # Inside .splatworld (metadata only)
     EXEMPLARS_DIR = "exemplars"
@@ -70,6 +71,11 @@ class ProfileManager:
     @property
     def current_session_path(self) -> Path:
         return self.splatworld_dir / self.CURRENT_SESSION_FILE
+
+    @property
+    def prompt_history_path(self) -> Path:
+        """Path to prompt_history.jsonl file for tracking prompt variants."""
+        return self.splatworld_dir / self.PROMPT_HISTORY_FILE
 
     def is_initialized(self) -> bool:
         """Check if project has been initialized."""
@@ -620,3 +626,127 @@ class ProfileManager:
         result.sort(key=lambda x: x[0].timestamp, reverse=True)
 
         return result
+
+    # Prompt history methods (HIST-01, HIST-02, HIST-03)
+
+    def save_prompt_variant(self, entry: PromptHistoryEntry) -> None:
+        """Save a prompt variant to prompt_history.jsonl (HIST-01).
+
+        Append-only storage for all prompt variants tried during training.
+        """
+        with open(self.prompt_history_path, "a") as f:
+            f.write(json.dumps(entry.to_dict()) + "\n")
+
+    def update_prompt_variant_rating(self, variant_id: str, rating: str) -> bool:
+        """Update the rating for a prompt variant.
+
+        Returns True if variant was found and updated, False otherwise.
+        """
+        if not self.prompt_history_path.exists():
+            return False
+
+        entries = self.get_prompt_history()
+        updated = False
+
+        for entry in entries:
+            if entry.variant_id == variant_id:
+                entry.rating = rating
+                updated = True
+                break
+
+        if updated:
+            # Atomic rewrite
+            temp_path = self.prompt_history_path.with_suffix(".tmp")
+            with open(temp_path, "w") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry.to_dict()) + "\n")
+            temp_path.replace(self.prompt_history_path)
+
+        return updated
+
+    def get_prompt_history(self, limit: Optional[int] = None, session_id: Optional[str] = None) -> list[PromptHistoryEntry]:
+        """Get prompt history, optionally filtered by session (HIST-03).
+
+        Args:
+            limit: Maximum number of entries to return (most recent first)
+            session_id: Filter to only entries from this training session
+
+        Returns:
+            List of PromptHistoryEntry objects, most recent first
+        """
+        if not self.prompt_history_path.exists():
+            return []
+
+        entries = []
+        with open(self.prompt_history_path) as f:
+            for line in f:
+                if line.strip():
+                    entry = PromptHistoryEntry.from_dict(json.loads(line))
+                    if session_id is None or entry.session_id == session_id:
+                        entries.append(entry)
+
+        # Most recent first
+        entries.reverse()
+
+        if limit:
+            entries = entries[:limit]
+
+        return entries
+
+    def get_variant_lineage(self, variant_id: str) -> list[PromptHistoryEntry]:
+        """Get the lineage chain for a variant (HIST-02).
+
+        Returns list starting from oldest ancestor to the given variant.
+        """
+        if not self.prompt_history_path.exists():
+            return []
+
+        # Build lookup dict
+        all_entries = {}
+        with open(self.prompt_history_path) as f:
+            for line in f:
+                if line.strip():
+                    entry = PromptHistoryEntry.from_dict(json.loads(line))
+                    all_entries[entry.variant_id] = entry
+
+        # Trace lineage backwards
+        lineage = []
+        current_id = variant_id
+
+        while current_id and current_id in all_entries:
+            entry = all_entries[current_id]
+            lineage.append(entry)
+            current_id = entry.parent_variant_id
+
+        # Reverse to get oldest first
+        lineage.reverse()
+        return lineage
+
+    def get_prompt_history_stats(self) -> dict:
+        """Get statistics about prompt history.
+
+        Returns dict with counts for total variants, rated, positive, negative, etc.
+        """
+        entries = self.get_prompt_history()
+
+        total = len(entries)
+        rated = sum(1 for e in entries if e.is_rated)
+        positive = sum(1 for e in entries if e.is_positive)
+        negative = sum(1 for e in entries if e.is_negative)
+        unrated = total - rated
+
+        # Count unique base prompts
+        base_prompts = set(e.base_prompt for e in entries)
+
+        # Count unique sessions
+        sessions = set(e.session_id for e in entries if e.session_id)
+
+        return {
+            "total_variants": total,
+            "rated": rated,
+            "unrated": unrated,
+            "positive": positive,
+            "negative": negative,
+            "unique_base_prompts": len(base_prompts),
+            "training_sessions": len(sessions),
+        }

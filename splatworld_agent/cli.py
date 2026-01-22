@@ -2247,5 +2247,140 @@ def download_splats(download_all: bool):
         console.print(f"  - Splat no longer available")
 
 
+@main.command("prompt-history")
+@click.option("--limit", "-n", default=20, help="Number of entries to show")
+@click.option("--session", "-s", help="Filter to a specific training session ID")
+@click.option("--lineage", "-l", help="Show lineage for a specific variant ID")
+@click.option("--stats", is_flag=True, help="Show statistics only")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def prompt_history(limit: int, session: str, lineage: str, stats: bool, as_json: bool):
+    """View prompt variant history from training sessions (HIST-03).
+
+    Shows all prompt variants tried during training, their ratings,
+    and lineage (which variants led to which).
+
+    Examples:
+        splatworld-agent prompt-history              # Recent variants
+        splatworld-agent prompt-history --stats      # Show statistics
+        splatworld-agent prompt-history -l var-xxx   # Show variant lineage
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check if prompt history exists
+    if not manager.prompt_history_path.exists():
+        console.print("[yellow]No prompt history found.[/yellow]")
+        console.print("[dim]Prompt history is recorded during training sessions.[/dim]")
+        console.print("[dim]Run 'splatworld-agent train \"prompt\"' to start recording.[/dim]")
+        return
+
+    # Stats mode
+    if stats:
+        history_stats = manager.get_prompt_history_stats()
+
+        if as_json:
+            console.print(json.dumps(history_stats, indent=2))
+            return
+
+        console.print(Panel.fit(
+            f"[bold]Prompt History Statistics[/bold]\n\n"
+            f"Total variants: {history_stats['total_variants']}\n"
+            f"Rated: {history_stats['rated']} "
+            f"([green]{history_stats['positive']}+[/green] / "
+            f"[red]{history_stats['negative']}-[/red])\n"
+            f"Unrated: {history_stats['unrated']}\n\n"
+            f"Unique base prompts: {history_stats['unique_base_prompts']}\n"
+            f"Training sessions: {history_stats['training_sessions']}",
+            title="Prompt History Stats",
+        ))
+        return
+
+    # Lineage mode
+    if lineage:
+        chain = manager.get_variant_lineage(lineage)
+
+        if not chain:
+            console.print(f"[red]Variant not found: {lineage}[/red]")
+            return
+
+        if as_json:
+            console.print(json.dumps([e.to_dict() for e in chain], indent=2))
+            return
+
+        console.print(f"\n[bold]Lineage for {lineage}[/bold]\n")
+
+        for i, entry in enumerate(chain):
+            prefix = "  " * i
+            rating_str = ""
+            if entry.rating:
+                rating_colors = {"++": "green", "+": "green", "-": "yellow", "--": "red"}
+                color = rating_colors.get(entry.rating, "white")
+                rating_str = f" [{color}]{entry.rating}[/{color}]"
+
+            connector = "|-> " if i > 0 else ""
+            console.print(f"{prefix}{connector}[cyan]{entry.variant_id[:12]}...[/cyan]{rating_str}")
+            console.print(f"{prefix}    {entry.variant_prompt[:60]}{'...' if len(entry.variant_prompt) > 60 else ''}")
+
+            if entry.reasoning:
+                console.print(f"{prefix}    [dim]Reason: {entry.reasoning[:50]}...[/dim]")
+
+        return
+
+    # Default: list history
+    entries = manager.get_prompt_history(limit=limit, session_id=session)
+
+    if not entries:
+        if session:
+            console.print(f"[yellow]No entries found for session: {session}[/yellow]")
+        else:
+            console.print("[yellow]No prompt history entries.[/yellow]")
+        return
+
+    if as_json:
+        console.print(json.dumps([e.to_dict() for e in entries], indent=2))
+        return
+
+    # Build table
+    table = Table(title=f"Prompt History (last {limit})")
+    table.add_column("Variant ID", style="cyan", no_wrap=True)
+    table.add_column("Base Prompt")
+    table.add_column("Variant")
+    table.add_column("Rating", justify="center")
+    table.add_column("Parent", style="dim")
+    table.add_column("Time")
+
+    for entry in entries:
+        rating_str = ""
+        if entry.rating:
+            rating_colors = {"++": "green", "+": "green", "-": "yellow", "--": "red"}
+            color = rating_colors.get(entry.rating, "white")
+            rating_str = f"[{color}]{entry.rating}[/{color}]"
+        else:
+            rating_str = "[dim]-[/dim]"
+
+        parent_str = entry.parent_variant_id[:10] + "..." if entry.parent_variant_id else "[dim]root[/dim]"
+
+        table.add_row(
+            entry.variant_id[:13] + "...",
+            entry.base_prompt[:18] + ("..." if len(entry.base_prompt) > 18 else ""),
+            entry.variant_prompt[:33] + ("..." if len(entry.variant_prompt) > 33 else ""),
+            rating_str,
+            parent_str,
+            entry.timestamp.strftime("%m-%d %H:%M"),
+        )
+
+    console.print(table)
+
+    # Show tips
+    console.print("\n[dim]Tips:[/dim]")
+    console.print("[dim]  --lineage <id>  Show variant evolution chain[/dim]")
+    console.print("[dim]  --stats         Show summary statistics[/dim]")
+    console.print("[dim]  --session <id>  Filter by training session[/dim]")
+
+
 if __name__ == "__main__":
     main()
