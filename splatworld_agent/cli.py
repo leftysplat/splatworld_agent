@@ -2329,6 +2329,46 @@ def mode(new_mode: str):
 
 
 @main.command()
+def cancel():
+    """Cancel any ongoing SplatWorld action.
+
+    Stops training sessions, conversions, or other operations.
+    State is preserved so you can resume later.
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[yellow]No active SplatWorld project found.[/yellow]")
+        return
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check for active training session
+    if manager.current_session_path.exists():
+        try:
+            with open(manager.current_session_path) as f:
+                session_data = json.load(f)
+
+            if session_data.get("type") == "training" and session_data.get("status") == "active":
+                # Mark as cancelled
+                session_data["status"] = "cancelled"
+                session_data["ended_at"] = datetime.now().isoformat()
+
+                with open(manager.current_session_path, "w") as f:
+                    json.dump(session_data, f, indent=2)
+
+                console.print("[green]Training session cancelled.[/green]")
+                console.print(f"[dim]Images generated: {session_data.get('images_generated', 0)}[/dim]")
+                console.print(f"\n[cyan]Resume with:[/cyan] splatworld-agent resume")
+                return
+        except Exception:
+            pass
+
+    console.print("[green]Cancelled.[/green]")
+    console.print("[dim]Any pending operations have been stopped.[/dim]")
+    console.print("[dim]Use /splatworld-agent:resume-work to continue later.[/dim]")
+
+
+@main.command()
 def update():
     """Update SplatWorld Agent to the latest version.
 
