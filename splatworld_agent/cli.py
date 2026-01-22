@@ -1600,12 +1600,30 @@ def train(args: tuple, count: int, generator: str):
             "status": "active",
         })
 
+    # Prompt user for generator choice if not specified
+    if not generator:
+        console.print(Panel.fit(
+            "[yellow]Training may use many image generations.[/yellow]\n\n"
+            "Choose your image generator:\n"
+            "  [bold]1[/bold] = Nano Banana Pro [dim](higher quality, limited quota)[/dim]\n"
+            "  [bold]2[/bold] = Gemini [dim](lower quota usage, good quality)[/dim]\n",
+            title="Generator Selection",
+        ))
+        gen_choice = console.input("[bold]Choice (1/2):[/bold] ").strip()
+        if gen_choice == "2":
+            gen_name = "gemini"
+            console.print("[dim]Using Gemini for image generation[/dim]")
+        else:
+            gen_name = "nano"
+            console.print("[dim]Using Nano Banana Pro (will fallback to Gemini if quota reached)[/dim]")
+
     # Display training panel
     target_str = f"{count} images" if count else "until stopped"
     console.print(Panel.fit(
         f"[bold]Adaptive Training Mode[/bold]\n\n"
         f"Base prompt: [cyan]{prompt_text}[/cyan]\n"
         f"Target: {target_str}\n"
+        f"Generator: {gen_name} [dim](fallback: gemini)[/dim]\n"
         f"Progress: {images_generated} images generated\n\n"
         f"[bold]During training:[/bold]\n"
         f"  Rate each image: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate\n"
@@ -1615,13 +1633,22 @@ def train(args: tuple, count: int, generator: str):
         title="SplatWorld Training",
     ))
 
-    # Initialize generators
+    # Initialize generators (both for fallback support)
+    from splatworld_agent.generators.nano import NanoGenerator
+    from splatworld_agent.generators.gemini import GeminiGenerator
+
+    nano_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+    gemini_gen = GeminiGenerator(api_key=config.api_keys.google)
+
+    # Primary generator based on choice
     if gen_name == "nano":
-        from splatworld_agent.generators.nano import NanoGenerator
-        img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+        img_gen = nano_gen
+        fallback_gen = gemini_gen
+        fallback_name = "gemini"
     else:
-        from splatworld_agent.generators.gemini import GeminiGenerator
-        img_gen = GeminiGenerator(api_key=config.api_keys.google)
+        img_gen = gemini_gen
+        fallback_gen = None
+        fallback_name = None
 
     # Initialize prompt adapter for variant generation
     adapter = PromptAdapter(api_key=config.api_keys.anthropic)
@@ -1682,6 +1709,7 @@ def train(args: tuple, count: int, generator: str):
             variant_id = f"var-{uuid.uuid4().hex[:12]}"
 
             final_prompt = variant.variant_prompt if variant else enhanced_prompt
+            actual_generator = gen_name  # Track which generator was actually used
 
             with Progress(
                 SpinnerColumn(),
@@ -1690,7 +1718,41 @@ def train(args: tuple, count: int, generator: str):
             ) as progress:
                 task = progress.add_task(f"Generating image with {gen_name}...", total=None)
 
-                image_bytes = img_gen.generate(final_prompt, seed=None)
+                try:
+                    image_bytes = img_gen.generate(final_prompt, seed=None)
+                except Exception as gen_error:
+                    # Check if this is a quota/rate limit error and we have a fallback
+                    error_str = str(gen_error).lower()
+                    is_quota_error = any(term in error_str for term in [
+                        "quota", "rate limit", "exhausted", "limit exceeded",
+                        "too many requests", "429", "resource_exhausted"
+                    ])
+
+                    if is_quota_error and fallback_gen is not None:
+                        progress.update(task, description=f"[yellow]{gen_name} quota reached, trying {fallback_name}...")
+                        console.print(f"\n[yellow]⚠ {gen_name} quota reached. Switching to {fallback_name}...[/yellow]")
+
+                        try:
+                            image_bytes = fallback_gen.generate(final_prompt, seed=None)
+                            actual_generator = fallback_name
+                            # Switch to fallback for remaining images
+                            img_gen = fallback_gen
+                            gen_name = fallback_name
+                            fallback_gen = None
+                            console.print(f"[green]✓ Switched to {gen_name} for remaining images[/green]")
+                        except Exception as fallback_error:
+                            console.print(f"\n[red]Both generators failed:[/red]")
+                            console.print(f"  {gen_name}: {gen_error}")
+                            console.print(f"  {fallback_name}: {fallback_error}")
+                            console.print("[dim]Try again later when quota resets.[/dim]")
+                            cancelled = True
+                            break
+                    else:
+                        console.print(f"\n[red]Image generation failed: {gen_error}[/red]")
+                        if fallback_gen is None:
+                            console.print("[dim]No fallback generator available.[/dim]")
+                        cancelled = True
+                        break
 
                 # Save generation
                 image_dir, metadata_dir = manager.save_generation(Generation(
@@ -1699,7 +1761,7 @@ def train(args: tuple, count: int, generator: str):
                     enhanced_prompt=final_prompt,
                     timestamp=datetime.now(),
                     metadata={
-                        "generator": gen_name,
+                        "generator": actual_generator,
                         "training_session": session_id,
                         "variant_id": variant_id,
                         "image_number": images_generated,
@@ -1718,7 +1780,7 @@ def train(args: tuple, count: int, generator: str):
                 with open(metadata_path, "w") as f:
                     json.dump(gen_data, f, indent=2)
 
-                progress.update(task, description="[green]Image generated!")
+                progress.update(task, description=f"[green]Image generated with {actual_generator}!")
 
             console.print(f"[dim]File: {image_path}[/dim]")
 
