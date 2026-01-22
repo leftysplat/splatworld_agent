@@ -1,7 +1,7 @@
 """
 Gemini 2.5 Flash image generator for SplatWorld Agent.
 
-Alternative to Nano Banana Pro. Uses Gemini 2.5 Flash Preview Image
+Alternative to Nano Banana Pro. Uses Gemini 2.5 Flash Image
 for image generation via the Gemini API.
 """
 
@@ -14,8 +14,8 @@ import httpx
 from . import ImageGenerator
 
 
-# Gemini 2.5 Flash Preview Image - latest image generation model
-GEMINI_MODEL = "gemini-2.5-flash-preview-image"
+# Gemini 2.5 Flash Image - latest image generation model
+GEMINI_MODEL = "gemini-2.5-flash-image"
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
@@ -23,7 +23,7 @@ class GeminiGenerator(ImageGenerator):
     """
     Gemini 2.5 Flash image generator.
 
-    Uses Google's Gemini 2.5 Flash Preview Image model for image generation.
+    Uses Google's Gemini 2.5 Flash Image model for image generation.
     Available through the standard Gemini API.
     """
 
