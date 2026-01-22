@@ -1787,12 +1787,8 @@ def train(args: tuple, count: int, generator: str):
 
             console.print(f"[dim]File: {image_path}[/dim]")
 
-            # Open image for viewing
-            try:
-                import subprocess
-                subprocess.Popen(["open", str(image_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            # Don't auto-open image - let user view on their own
+            # The file path is shown above so they can open it manually
 
             # Save prompt history entry (unrated initially)
             history_entry = PromptHistoryEntry(
