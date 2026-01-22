@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "created": "2026-01-21T13:53:29.939019",
+  "updated": "2026-01-21T23:13:52.926991",
+  "visual_style": {
+    "lighting": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    },
+    "color_palette": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    },
+    "mood": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    }
+  },
+  "composition": {
+    "density": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    },
+    "perspective": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    },
+    "foreground": {
+      "preference": "",
+      "avoid": "",
+      "confidence": 0.0
+    }
+  },
+  "domain": {
+    "environments": [],
+    "avoid_environments": [],
+    "confidence": 0.0
+  },
+  "quality": {
+    "must_have": [],
+    "never": []
+  },
+  "exemplars": [],
+  "anti_exemplars": [],
+  "stats": {
+    "total_generations": 2,
+    "feedback_count": 0,
+    "love_count": 0,
+    "like_count": 0,
+    "dislike_count": 0,
+    "hate_count": 0
+  },
+  "calibration": {
+    "is_calibrated": false,
+    "calibrated_at": null,
+    "last_learn_at": null,
+    "learn_count": 0
+  }
+}

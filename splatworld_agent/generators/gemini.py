@@ -15,7 +15,8 @@ from . import ImageGenerator
 
 
 # Imagen 3 API configuration
-IMAGEN_MODEL = "imagen-3.0-generate-002"
+# Try imagen-3.0-generate-001 (stable) - 002 may not be available
+IMAGEN_MODEL = "imagen-3.0-generate-001"
 IMAGEN_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGEN_MODEL}:predict"
 
 

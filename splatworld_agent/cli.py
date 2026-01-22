@@ -1640,15 +1640,15 @@ def train(args: tuple, count: int, generator: str):
     nano_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
     gemini_gen = GeminiGenerator(api_key=config.api_keys.google)
 
-    # Primary generator based on choice
+    # Primary generator based on choice (bidirectional fallback)
     if gen_name == "nano":
         img_gen = nano_gen
         fallback_gen = gemini_gen
         fallback_name = "gemini"
     else:
         img_gen = gemini_gen
-        fallback_gen = None
-        fallback_name = None
+        fallback_gen = nano_gen
+        fallback_name = "nano"
 
     # Initialize prompt adapter for variant generation
     adapter = PromptAdapter(api_key=config.api_keys.anthropic)
@@ -1721,16 +1721,19 @@ def train(args: tuple, count: int, generator: str):
                 try:
                     image_bytes = img_gen.generate(final_prompt, seed=None)
                 except Exception as gen_error:
-                    # Check if this is a quota/rate limit error and we have a fallback
+                    # Check if this is a recoverable error and we have a fallback
                     error_str = str(gen_error).lower()
-                    is_quota_error = any(term in error_str for term in [
+                    is_recoverable_error = any(term in error_str for term in [
                         "quota", "rate limit", "exhausted", "limit exceeded",
-                        "too many requests", "429", "resource_exhausted"
+                        "too many requests", "429", "resource_exhausted",
+                        "404", "not found", "not available", "does not exist",
+                        "model", "invalid", "503", "500", "unavailable"
                     ])
 
-                    if is_quota_error and fallback_gen is not None:
-                        progress.update(task, description=f"[yellow]{gen_name} quota reached, trying {fallback_name}...")
-                        console.print(f"\n[yellow]⚠ {gen_name} quota reached. Switching to {fallback_name}...[/yellow]")
+                    if is_recoverable_error and fallback_gen is not None:
+                        progress.update(task, description=f"[yellow]{gen_name} failed, trying {fallback_name}...")
+                        console.print(f"\n[yellow]⚠ {gen_name} error: {gen_error}[/yellow]")
+                        console.print(f"[yellow]  Switching to {fallback_name}...[/yellow]")
 
                         try:
                             image_bytes = fallback_gen.generate(final_prompt, seed=None)
