@@ -138,6 +138,15 @@ Browse past generations.
 Usage: `/splatworld-agent:history`
 Usage: `/splatworld-agent:history -n 20`
 
+**`/splatworld-agent:worlds`**
+List all worlds from your Marble/WorldLabs account.
+
+- Fetches directly from Marble API
+- Shows all worlds you've created (not just local)
+- Displays viewer URLs for each world
+
+Usage: `/splatworld-agent:worlds`
+
 ## Setup
 
 **`/splatworld-agent:config`**

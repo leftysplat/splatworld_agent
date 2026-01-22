@@ -2871,6 +2871,70 @@ def download_splats(download_all: bool):
         console.print(f"  - Splat no longer available")
 
 
+@main.command("worlds")
+@click.option("--open", "open_id", help="Open viewer URL for a specific world ID")
+def list_worlds(open_id: str = None) -> None:
+    """List all worlds from your Marble/WorldLabs account.
+
+    Fetches directly from the Marble API to show all worlds
+    you've created, not just those tracked locally.
+
+    Examples:
+        splatworld-agent worlds                    # List all worlds
+        splatworld-agent worlds --open <world_id>  # Open viewer for a world
+    """
+    config = Config.load()
+    if not config.api_keys.marble:
+        console.print("[red]Error: Marble API key required.[/red]")
+        console.print("Set WORLDLABS_API_KEY environment variable.")
+        sys.exit(1)
+
+    from splatworld_agent.core.marble import MarbleClient, MarbleError
+
+    try:
+        marble = MarbleClient(api_key=config.api_keys.marble)
+        worlds = marble.list_worlds()
+        marble.close()
+    except MarbleError as e:
+        console.print(f"[red]Error fetching worlds: {e}[/red]")
+        sys.exit(1)
+
+    if not worlds:
+        console.print("[yellow]No worlds found in your account.[/yellow]")
+        return
+
+    if open_id:
+        # Find and open a specific world
+        world = next((w for w in worlds if w.get("world_id") == open_id or w.get("world_id", "").startswith(open_id)), None)
+        if not world:
+            console.print(f"[red]No world found with ID: {open_id}[/red]")
+            return
+        import webbrowser
+        viewer_url = f"https://marble.worldlabs.ai/world/{world.get('world_id')}"
+        console.print(f"[blue]Opening viewer for {world.get('world_id')}...[/blue]")
+        webbrowser.open(viewer_url)
+        return
+
+    # List all worlds
+    console.print(f"\n[bold]Your Marble Worlds ({len(worlds)})[/bold]\n")
+
+    for world in worlds:
+        world_id = world.get("world_id", world.get("name", "unknown"))
+        display_name = world.get("display_name", "Untitled")
+        created = world.get("create_time", "")
+        visibility = world.get("visibility", "unknown")
+
+        console.print(f"[cyan]{world_id}[/cyan]")
+        console.print(f"  Name: {display_name}")
+        if created:
+            console.print(f"  Created: {created}")
+        console.print(f"  Visibility: {visibility}")
+        console.print(f"  [blue]Viewer: https://marble.worldlabs.ai/world/{world_id}[/blue]")
+        console.print()
+
+    console.print("[dim]Tip: Use --open <id> to open a viewer directly[/dim]")
+
+
 @main.command("prompt-history")
 @click.option("--limit", "-n", default=20, help="Number of entries to show")
 @click.option("--session", "-s", help="Filter to a specific training session ID")

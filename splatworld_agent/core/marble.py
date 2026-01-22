@@ -331,6 +331,17 @@ class MarbleClient:
 
         return output_path
 
+    def list_worlds(self) -> list[dict]:
+        """
+        List all worlds created by the authenticated user.
+
+        Returns:
+            List of world dictionaries with id, display_name, created_at, etc.
+        """
+        response = self._request("/worlds")
+        worlds = response.get("worlds", [])
+        return worlds
+
     def estimate_cost(self, count: int) -> float:
         """Estimate cost for N conversions."""
         return count * MARBLE_COST_PER_GENERATION
