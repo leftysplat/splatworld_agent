@@ -22,8 +22,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from splatworld_agent import __version__
 from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE
 from splatworld_agent.profile import ProfileManager
-from splatworld_agent.models import TasteProfile, Feedback, Generation
-from splatworld_agent.learning import LearningEngine, enhance_prompt
+from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHistoryEntry
+from splatworld_agent.learning import LearningEngine, enhance_prompt, PromptAdapter
 from splatworld_agent.display import display
 
 console = Console()
@@ -612,17 +612,25 @@ def batch_rate(ratings_input: tuple):
 @click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
 @click.option("--cycles", "-c", default=1, help="Number of cycles (generate, review, learn)")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
+@click.option("--mode", "-m", type=click.Choice(["explore", "refine"]), default=None, help="Exploration mode (explore=diverse, refine=targeted)")
 @click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
-def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
+def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inline: bool):
     """Generate a batch of images for review.
 
     Generates N images, then lets you review and rate them before
     optionally running more cycles with learned preferences.
 
+    Exploration modes (MODE-01/MODE-02):
+        --mode explore  Diverse variants across dimensions (default)
+        --mode refine   Small targeted tweaks to what works
+
     Example workflow:
         splatworld-agent batch "cozy cabin interior" -n 5 -c 2
         # Generates 5 images, you review them, learns preferences,
         # then generates 5 more with updated taste profile
+
+        splatworld-agent batch "cozy cabin" --mode refine
+        # Fine-tune variants based on what's already working
     """
     prompt_text = " ".join(prompt)
 
@@ -633,6 +641,9 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
 
     manager = ProfileManager(project_dir.parent)
     config = Config.load()
+
+    # Determine exploration mode (command line overrides config)
+    exploration_mode = ExplorationMode.from_string(mode or config.defaults.exploration_mode)
 
     # Validate config
     issues = config.validate()
@@ -656,10 +667,15 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
             title="Training Recommended",
         ))
 
+    # Show mode info
+    mode_display = "explore (diverse)" if exploration_mode == ExplorationMode.EXPLORE_WIDE else "refine (targeted)"
+    console.print(f"[dim]Mode: {mode_display}[/dim]")
+
     for cycle_num in range(1, cycles + 1):
         console.print(Panel.fit(
             f"[bold]Cycle {cycle_num}/{cycles}[/bold]\n"
-            f"Generating {count} images for: {prompt_text}",
+            f"Generating {count} images for: {prompt_text}\n"
+            f"[dim]Mode: {mode_display}[/dim]",
             title="Batch Generation",
         ))
 
@@ -1496,15 +1512,26 @@ def learn(dry_run: bool):
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--images-per-round", "-n", default=5, help="Images to generate per round")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
-def train(prompt: tuple, images_per_round: int, generator: str):
+@click.option("--mode", "-m", type=click.Choice(["explore", "refine"]), default=None, help="Exploration mode (explore=diverse, refine=targeted)")
+def train(prompt: tuple, images_per_round: int, generator: str, mode: str):
     """Guided training mode to calibrate your taste profile.
 
     Runs generate-review-learn cycles until the profile is calibrated
     (minimum 20 rated images with good positive/negative distribution).
 
+    Exploration modes (MODE-01/MODE-02):
+        --mode explore  Diverse variants across dimensions (default)
+        --mode refine   Small targeted tweaks to what works
+
+    Switch modes during training:
+        splatworld-agent mode refine   # Then continue training
+
     Example:
         splatworld-agent train "cozy cabin interior"
         # Generates 5 images, you review them, learns, repeats until calibrated
+
+        splatworld-agent train "cozy cabin" --mode refine
+        # Fine-tune with small targeted changes
     """
     from splatworld_agent.models import CalibrationStatus
 
@@ -1526,6 +1553,10 @@ def train(prompt: tuple, images_per_round: int, generator: str):
             console.print(f"  - {issue}")
         sys.exit(1)
 
+    # Determine exploration mode (command line overrides config)
+    exploration_mode = ExplorationMode.from_string(mode or config.defaults.exploration_mode)
+    mode_display = "explore (diverse)" if exploration_mode == ExplorationMode.EXPLORE_WIDE else "refine (targeted)"
+
     profile = manager.load_profile()
 
     if profile.is_calibrated:
@@ -1537,7 +1568,8 @@ def train(prompt: tuple, images_per_round: int, generator: str):
     min_feedback = CalibrationStatus.MIN_FEEDBACK_FOR_CALIBRATION
     console.print(Panel.fit(
         f"[bold]Training Mode[/bold]\n\n"
-        f"Training your taste profile with: {prompt_text}\n\n"
+        f"Training your taste profile with: {prompt_text}\n"
+        f"Mode: {mode_display}\n\n"
         f"Requirements for calibration:\n"
         f"  - Minimum {min_feedback} rated images\n"
         f"  - At least 10% positive feedback (++/+)\n"
@@ -1755,6 +1787,7 @@ def config():
         f"  Anthropic: {'[green]configured[/green]' if cfg.api_keys.anthropic else '[red]missing[/red]'}\n\n"
         f"[bold]Defaults[/bold]\n"
         f"  Image generator: {cfg.defaults.image_generator}\n"
+        f"  Exploration mode: {cfg.defaults.exploration_mode}\n"
         f"  Auto-learn threshold: {cfg.defaults.auto_learn_threshold}\n"
         f"  Download splats: {cfg.defaults.download_splats}\n"
         f"  Download meshes: {cfg.defaults.download_meshes}",
@@ -1766,6 +1799,68 @@ def config():
         console.print("\n[red]Issues:[/red]")
         for issue in issues:
             console.print(f"  - {issue}")
+
+
+@main.command()
+@click.argument("new_mode", required=False, type=click.Choice(["explore", "refine"]))
+def mode(new_mode: str):
+    """View or set the exploration mode (MODE-03).
+
+    Exploration modes control how prompt variants are generated:
+
+    \b
+    explore - Generate DIVERSE variants across multiple dimensions
+              (lighting, mood, composition, atmosphere, colors)
+              Best for: discovering what you like, exploring possibilities
+
+    \b
+    refine  - Make SMALL targeted tweaks to successful elements
+              (subtle variations on what's working)
+              Best for: fine-tuning after finding promising directions
+
+    Examples:
+        splatworld-agent mode           # Show current mode
+        splatworld-agent mode explore   # Switch to explore mode
+        splatworld-agent mode refine    # Switch to refine mode
+
+    You can switch modes at any time during a training session.
+    """
+    cfg = Config.load()
+
+    if new_mode is None:
+        # Show current mode
+        current_mode = cfg.defaults.exploration_mode
+        mode_desc = {
+            "explore": "EXPLORE WIDELY - Diverse variants across dimensions",
+            "refine": "REFINE NARROWLY - Small targeted tweaks",
+        }.get(current_mode, current_mode)
+
+        console.print(Panel.fit(
+            f"[bold]Current Mode:[/bold] {current_mode}\n\n"
+            f"{mode_desc}\n\n"
+            f"[dim]Switch modes:[/dim]\n"
+            f"  [cyan]splatworld-agent mode explore[/cyan] - Try diverse approaches\n"
+            f"  [cyan]splatworld-agent mode refine[/cyan]  - Fine-tune what works",
+            title="Exploration Mode",
+        ))
+    else:
+        # Set new mode
+        old_mode = cfg.defaults.exploration_mode
+        cfg.defaults.exploration_mode = new_mode
+        cfg.save()
+
+        mode_desc = {
+            "explore": "Generating DIVERSE variants across dimensions",
+            "refine": "Making SMALL targeted tweaks to successful elements",
+        }.get(new_mode, new_mode)
+
+        console.print(f"[green]Mode changed:[/green] {old_mode} -> [bold]{new_mode}[/bold]")
+        console.print(f"[dim]{mode_desc}[/dim]")
+
+        if new_mode == "refine":
+            console.print("\n[dim]Tip: Refine mode works best after you've found styles you like.[/dim]")
+        else:
+            console.print("\n[dim]Tip: Explore mode helps discover new directions.[/dim]")
 
 
 @main.command()

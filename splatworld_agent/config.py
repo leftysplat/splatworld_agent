@@ -61,6 +61,7 @@ class Defaults:
     auto_learn_threshold: int = 10  # Run learning after this many feedback entries
     download_splats: bool = True
     download_meshes: bool = True
+    exploration_mode: str = "explore"  # "explore" or "refine" (MODE-01/MODE-02)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Defaults":
@@ -69,6 +70,7 @@ class Defaults:
             auto_learn_threshold=data.get("auto_learn_threshold", 10),
             download_splats=data.get("download_splats", True),
             download_meshes=data.get("download_meshes", True),
+            exploration_mode=data.get("exploration_mode", "explore"),
         )
 
 
@@ -116,6 +118,7 @@ class Config:
                 "auto_learn_threshold": self.defaults.auto_learn_threshold,
                 "download_splats": self.defaults.download_splats,
                 "download_meshes": self.defaults.download_meshes,
+                "exploration_mode": self.defaults.exploration_mode,
             },
         }
 
