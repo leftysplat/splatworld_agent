@@ -62,3 +62,4 @@ config.yaml
 test_output/
 *.spz
 *.ply
+.planning/
