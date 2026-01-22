@@ -234,7 +234,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
             progress.update(task, description="[green]Image generated!")
 
             # Save the generation
-            gen_dir = manager.save_generation(Generation(
+            image_dir, metadata_dir = manager.save_generation(Generation(
                 id=gen_id,
                 prompt=prompt_text,
                 enhanced_prompt=enhanced_prompt,
@@ -242,8 +242,8 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                 metadata={"generator": gen_name, "seed": seed},
             ))
 
-            # Save image
-            image_path = gen_dir / "source.png"
+            # Save image to visible directory
+            image_path = image_dir / "source.png"
             with open(image_path, "wb") as f:
                 f.write(image_bytes)
 
@@ -272,17 +272,32 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                     on_progress=on_progress,
                 )
 
-                # Download splat file
+                # Download splat file to visible splats directory
                 if result.splat_url and config.defaults.download_splats:
-                    splat_path = gen_dir / "scene.spz"
-                    marble.download_file(result.splat_url, splat_path)
-                    console.print(f"[green]Splat saved:[/green] {splat_path}")
+                    manager.splats_dir.mkdir(exist_ok=True)
+                    splat_path = manager.splats_dir / f"{gen_id}.spz"
+                    try:
+                        marble.download_file(result.splat_url, splat_path)
+                        console.print(f"[green]Splat saved:[/green] {splat_path}")
+                    except Exception as e:
+                        splat_path = None
+                        error_msg = str(e)
+                        if "403" in error_msg or "Forbidden" in error_msg:
+                            console.print(f"[yellow]Splat download requires premium account. Viewer URL saved.[/yellow]")
+                        else:
+                            console.print(f"[yellow]Splat download failed: {error_msg}[/yellow]")
+                elif result.splat_url and not config.defaults.download_splats:
+                    console.print(f"[dim]Splat download skipped (download_splats=false). Viewer URL saved.[/dim]")
 
                 # Download mesh file
                 if result.mesh_url and config.defaults.download_meshes:
-                    mesh_path = gen_dir / "collision.glb"
-                    marble.download_file(result.mesh_url, mesh_path)
-                    console.print(f"[green]Mesh saved:[/green] {mesh_path}")
+                    mesh_path = image_dir / "collision.glb"
+                    try:
+                        marble.download_file(result.mesh_url, mesh_path)
+                        console.print(f"[green]Mesh saved:[/green] {mesh_path}")
+                    except Exception as e:
+                        mesh_path = None
+                        console.print(f"[yellow]Mesh download failed: {e}[/yellow]")
 
                 marble.close()
 
@@ -295,7 +310,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                 console.print("[yellow]Skipping 3D conversion (no Marble API key configured)[/yellow]")
 
             # Update generation metadata with paths
-            metadata_path = gen_dir / "metadata.json"
+            metadata_path = metadata_dir / "metadata.json"
             with open(metadata_path) as f:
                 gen_data = json.load(f)
 
@@ -304,6 +319,11 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                 gen_data["splat_path"] = str(splat_path)
             if mesh_path:
                 gen_data["mesh_path"] = str(mesh_path)
+            # Store URLs for later download via download-splats command
+            if not no_splat and config.api_keys.marble:
+                gen_data["viewer_url"] = result.viewer_url
+                if result.splat_url:
+                    gen_data["splat_url"] = result.splat_url
 
             with open(metadata_path, "w") as f:
                 json.dump(gen_data, f, indent=2)
@@ -675,7 +695,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
                     image_bytes = img_gen.generate(enhanced_prompt, seed=None)
 
                     # Save generation
-                    gen_dir = manager.save_generation(Generation(
+                    image_dir, metadata_dir = manager.save_generation(Generation(
                         id=gen_id,
                         prompt=prompt_text,
                         enhanced_prompt=enhanced_prompt,
@@ -683,13 +703,13 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
                         metadata={"generator": gen_name, "batch_id": batch_id, "batch_index": i},
                     ))
 
-                    # Save image
-                    image_path = gen_dir / "source.png"
+                    # Save image to visible directory
+                    image_path = image_dir / "source.png"
                     with open(image_path, "wb") as f:
                         f.write(image_bytes)
 
                     # Update metadata with path
-                    metadata_path = gen_dir / "metadata.json"
+                    metadata_path = metadata_dir / "metadata.json"
                     with open(metadata_path) as f:
                         gen_data = json.load(f)
                     gen_data["source_image_path"] = str(image_path)
@@ -1121,23 +1141,42 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
                     on_progress=on_progress,
                 )
 
-                # Get generation directory
-                gen_dir = Path(gen.source_image_path).parent
-
-                # Download splat file
+                # Download splat file to visible splats directory (if enabled and available)
                 splat_path = None
                 mesh_path = None
 
-                if result.splat_url:
-                    splat_path = gen_dir / "scene.spz"
-                    marble.download_file(result.splat_url, splat_path)
+                if result.splat_url and config.defaults.download_splats:
+                    manager.splats_dir.mkdir(exist_ok=True)
+                    splat_path = manager.splats_dir / f"{gen.id}.spz"
+                    try:
+                        marble.download_file(result.splat_url, splat_path)
+                    except Exception as e:
+                        splat_path = None
+                        error_msg = str(e)
+                        if "403" in error_msg or "Forbidden" in error_msg:
+                            console.print(f"[yellow]Splat download requires premium account. Viewer URL saved.[/yellow]")
+                        else:
+                            console.print(f"[yellow]Splat download failed: {error_msg}[/yellow]")
+                        console.print(f"[dim]Run 'splatworld-agent download-splats' later to retry.[/dim]")
+                elif result.splat_url and not config.defaults.download_splats:
+                    console.print(f"[dim]Splat download skipped (download_splats=false). Viewer URL saved.[/dim]")
 
+                # Download mesh file to image directory
                 if result.mesh_url and config.defaults.download_meshes:
-                    mesh_path = gen_dir / "collision.glb"
-                    marble.download_file(result.mesh_url, mesh_path)
+                    image_dir = Path(gen.source_image_path).parent
+                    mesh_path = image_dir / "collision.glb"
+                    try:
+                        marble.download_file(result.mesh_url, mesh_path)
+                    except Exception as e:
+                        mesh_path = None
+                        console.print(f"[yellow]Mesh download failed: {e}[/yellow]")
 
-                # Update metadata
-                metadata_path = gen_dir / "metadata.json"
+                # Update metadata in hidden directory
+                metadata_dir = manager.get_metadata_dir(gen.id)
+                if not metadata_dir:
+                    console.print(f"[yellow]Could not find metadata for {gen.id}[/yellow]")
+                    continue
+                metadata_path = metadata_dir / "metadata.json"
                 with open(metadata_path) as f:
                     gen_data = json.load(f)
 
@@ -1146,6 +1185,9 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
                 if mesh_path:
                     gen_data["mesh_path"] = str(mesh_path)
                 gen_data["viewer_url"] = result.viewer_url
+                # Store splat_url for later download via download-splats command
+                if result.splat_url:
+                    gen_data["splat_url"] = result.splat_url
 
                 with open(metadata_path, "w") as f:
                     json.dump(gen_data, f, indent=2)
@@ -1549,7 +1591,7 @@ def train(prompt: tuple, images_per_round: int, generator: str):
 
                     image_bytes = img_gen.generate(enhanced_prompt, seed=None)
 
-                    gen_dir = manager.save_generation(Generation(
+                    image_dir, metadata_dir = manager.save_generation(Generation(
                         id=gen_id,
                         prompt=prompt_text,
                         enhanced_prompt=enhanced_prompt,
@@ -1557,11 +1599,11 @@ def train(prompt: tuple, images_per_round: int, generator: str):
                         metadata={"generator": gen_name, "training_round": round_num},
                     ))
 
-                    image_path = gen_dir / "source.png"
+                    image_path = image_dir / "source.png"
                     with open(image_path, "wb") as f:
                         f.write(image_bytes)
 
-                    metadata_path = gen_dir / "metadata.json"
+                    metadata_path = metadata_dir / "metadata.json"
                     with open(metadata_path) as f:
                         gen_data = json.load(f)
                     gen_data["source_image_path"] = str(image_path)
@@ -2087,6 +2129,122 @@ def splats(ctx: click.Context, open_id: str = None) -> None:
         console.print()
 
     console.print("[dim]Tip: Use --open <id> to open a viewer directly, e.g.: splatworld-agent splats --open abc123[/dim]")
+
+
+@main.command("download-splats")
+@click.option("--all", "download_all", is_flag=True, help="Download all missing splats without confirmation")
+def download_splats(download_all: bool):
+    """Download splat files that haven't been downloaded yet.
+
+    Finds all converted generations (with viewer_url) that don't have
+    local splat files and downloads them from WorldLabs.
+
+    Note: Downloading splats may require a premium WorldLabs account.
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    config = Config.load()
+    if not config.api_keys.marble:
+        console.print("[red]Error: Marble API key required for splat downloads.[/red]")
+        console.print("Set WORLDLABS_API_KEY environment variable.")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    generations = manager.get_all_generations()
+
+    # Find generations with splat_url but missing local splat file
+    missing_splats = []
+    for gen in generations:
+        if gen.splat_url:
+            # Check if local splat file exists
+            if gen.splat_path and Path(gen.splat_path).exists():
+                continue  # Already have local file
+            missing_splats.append(gen)
+
+    if not missing_splats:
+        console.print("[green]All splats are downloaded![/green]")
+        console.print("[dim]No missing splat files found.[/dim]")
+        return
+
+    console.print(f"\n[bold]Missing Splats ({len(missing_splats)})[/bold]\n")
+
+    for gen in missing_splats:
+        console.print(f"[cyan]{gen.id}[/cyan]")
+        console.print(f"  Prompt: {gen.prompt[:50]}{'...' if len(gen.prompt) > 50 else ''}")
+        console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
+        console.print()
+
+    if not download_all:
+        try:
+            confirm = input(f"\nDownload {len(missing_splats)} splat file(s)? (y/N): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            confirm = "n"
+
+        if confirm != "y":
+            console.print("[yellow]Download cancelled.[/yellow]")
+            return
+
+    # Download missing splats to visible splats directory
+    from splatworld_agent.core.marble import MarbleClient
+
+    marble = MarbleClient(api_key=config.api_keys.marble)
+    downloaded = 0
+    failed = 0
+
+    # Ensure splats directory exists
+    manager.splats_dir.mkdir(exist_ok=True)
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            for i, gen in enumerate(missing_splats):
+                task = progress.add_task(f"Downloading {i+1}/{len(missing_splats)}: {gen.id}...", total=None)
+
+                # Save splat to visible splats directory
+                splat_path = manager.splats_dir / f"{gen.id}.spz"
+
+                try:
+                    marble.download_file(gen.splat_url, splat_path)
+
+                    # Update metadata in hidden directory
+                    metadata_dir = manager.get_metadata_dir(gen.id)
+                    if metadata_dir:
+                        metadata_path = metadata_dir / "metadata.json"
+                        if metadata_path.exists():
+                            with open(metadata_path) as f:
+                                gen_data = json.load(f)
+                            gen_data["splat_path"] = str(splat_path)
+                            with open(metadata_path, "w") as f:
+                                json.dump(gen_data, f, indent=2)
+
+                    downloaded += 1
+                    progress.update(task, description=f"[green]Downloaded: {gen.id}[/green]")
+
+                except Exception as e:
+                    failed += 1
+                    error_msg = str(e)
+                    if "403" in error_msg or "Forbidden" in error_msg:
+                        progress.update(task, description=f"[red]{gen.id}: Premium account required[/red]")
+                    else:
+                        progress.update(task, description=f"[red]{gen.id}: {error_msg}[/red]")
+
+    finally:
+        marble.close()
+
+    console.print(f"\n[bold]Download complete![/bold]")
+    console.print(f"  Downloaded: [green]{downloaded}[/green]")
+    if failed > 0:
+        console.print(f"  Failed: [red]{failed}[/red]")
+        console.print(f"\n[yellow]Some downloads failed. This may be due to:[/yellow]")
+        console.print(f"  - Premium WorldLabs account required")
+        console.print(f"  - Network issues")
+        console.print(f"  - Splat no longer available")
 
 
 if __name__ == "__main__":
