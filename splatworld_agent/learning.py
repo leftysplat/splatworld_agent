@@ -10,7 +10,7 @@ from typing import Optional
 
 from anthropic import Anthropic
 
-from .models import TasteProfile, Feedback, Generation, StylePreference
+from .models import TasteProfile, Feedback, Generation, StylePreference, PromptVariant
 
 
 SYNTHESIS_SYSTEM_PROMPT = """You are a taste profile analyzer for a 3D scene generation system.
@@ -314,3 +314,249 @@ def enhance_prompt(prompt: str, profile: TasteProfile) -> str:
         enhanced += f". Avoid: {', '.join(avoids)}"
 
     return enhanced
+
+
+VARIANT_SYSTEM_PROMPT = """You are a prompt variant generator for a 3D scene generation system.
+Your job is to create variations of user prompts that explore their preferences based on feedback patterns.
+
+CRITICAL RULES:
+1. The base prompt is SACRED - never remove or fundamentally change the user's core intent
+2. Variants ENHANCE the base by adding details, not replacing concepts
+3. Always explain your reasoning so the user understands why you made changes
+4. Track exactly what you modified from the base prompt
+
+You will receive:
+1. A base prompt from the user
+2. Recent feedback history (what they liked/disliked)
+3. Their current taste profile
+
+Generate a variant that:
+- Keeps ALL elements from the base prompt
+- Adds enhancements based on positive feedback patterns
+- Avoids elements from negative feedback patterns
+- Stays anchored to the original concept (no drift into unrelated ideas)
+
+Respond with a JSON object:
+{
+    "variant_prompt": "The full enhanced prompt text",
+    "modifications": ["added warm lighting", "enhanced with foggy atmosphere"],
+    "reasoning": "Based on your preference for warm, moody scenes, I added...",
+    "anchored_elements": ["forest", "sunset", "cabin"]
+}
+
+The "reasoning" field should be conversational and explain your thinking in 1-2 sentences.
+Start with phrases like "You seem to like...", "Based on your preference for...", "Since you rated X highly..."
+"""
+
+
+class PromptAdapter:
+    """Generates prompt variants anchored to user's base prompts.
+
+    Implements:
+    - ADAPT-02: Claude generates prompt variants anchored to user's base prompt
+    - ADAPT-04: System shows reasoning ("You seem to like xyz components, so I'm generating...")
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize the prompt adapter.
+
+        Args:
+            api_key: Anthropic API key. If not provided, reads from ANTHROPIC_API_KEY env var.
+        """
+        self.client = Anthropic(api_key=api_key)
+
+    def generate_variant(
+        self,
+        base_prompt: str,
+        profile: TasteProfile,
+        recent_feedback: Optional[list[tuple[Generation, Feedback]]] = None,
+    ) -> PromptVariant:
+        """
+        Generate a variant of the base prompt anchored to user preferences.
+
+        Args:
+            base_prompt: The user's original prompt (sacred - not to be changed)
+            profile: Current taste profile with learned preferences
+            recent_feedback: Optional list of (generation, feedback) tuples for context
+
+        Returns:
+            PromptVariant with the enhanced prompt, modifications list, and reasoning
+        """
+        # Build feedback context
+        feedback_context = self._build_feedback_context(recent_feedback)
+
+        # Build profile context
+        profile_context = profile.to_prompt_context() or "No preferences learned yet"
+
+        user_message = f"""
+## Base Prompt (DO NOT modify the core concept)
+{base_prompt}
+
+## Recent Feedback History
+{feedback_context}
+
+## Current Taste Profile
+{profile_context}
+
+Generate a variant that enhances this prompt based on the user's preferences.
+Remember: Keep the base prompt's core concept intact, only ADD enhancements.
+"""
+
+        response = self.client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=VARIANT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        # Parse JSON response
+        text = response.content[0].text
+
+        # Handle markdown code blocks
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+
+        result = json.loads(text.strip())
+
+        return PromptVariant(
+            base_prompt=base_prompt,
+            variant_prompt=result["variant_prompt"],
+            modifications=result.get("modifications", []),
+            reasoning=result.get("reasoning", ""),
+            anchored_elements=result.get("anchored_elements", []),
+        )
+
+    def generate_variants(
+        self,
+        base_prompt: str,
+        profile: TasteProfile,
+        recent_feedback: Optional[list[tuple[Generation, Feedback]]] = None,
+        count: int = 3,
+    ) -> list[PromptVariant]:
+        """
+        Generate multiple variants exploring different aspects of preferences.
+
+        Args:
+            base_prompt: The user's original prompt
+            profile: Current taste profile
+            recent_feedback: Optional feedback context
+            count: Number of variants to generate (default 3)
+
+        Returns:
+            List of PromptVariant objects
+        """
+        feedback_context = self._build_feedback_context(recent_feedback)
+        profile_context = profile.to_prompt_context() or "No preferences learned yet"
+
+        user_message = f"""
+## Base Prompt (DO NOT modify the core concept)
+{base_prompt}
+
+## Recent Feedback History
+{feedback_context}
+
+## Current Taste Profile
+{profile_context}
+
+Generate {count} DIFFERENT variants that each explore different aspects of the user's preferences.
+Each variant should enhance the base prompt in a unique way.
+
+Respond with a JSON array:
+[
+    {{
+        "variant_prompt": "...",
+        "modifications": ["..."],
+        "reasoning": "...",
+        "anchored_elements": ["..."]
+    }},
+    ...
+]
+"""
+
+        response = self.client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2048,
+            system=VARIANT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        text = response.content[0].text
+
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+
+        results = json.loads(text.strip())
+
+        # Handle both array and single object responses
+        if isinstance(results, dict):
+            results = [results]
+
+        variants = []
+        for result in results[:count]:
+            variants.append(PromptVariant(
+                base_prompt=base_prompt,
+                variant_prompt=result["variant_prompt"],
+                modifications=result.get("modifications", []),
+                reasoning=result.get("reasoning", ""),
+                anchored_elements=result.get("anchored_elements", []),
+            ))
+
+        return variants
+
+    def _build_feedback_context(
+        self,
+        recent_feedback: Optional[list[tuple[Generation, Feedback]]],
+    ) -> str:
+        """Build context string from recent feedback."""
+        if not recent_feedback:
+            return "No recent feedback available"
+
+        lines = []
+        for gen, fb in recent_feedback[-10:]:  # Last 10 items
+            rating_desc = {
+                "++": "loved",
+                "+": "liked",
+                "-": "disliked",
+                "--": "hated",
+            }.get(fb.rating, "rated")
+
+            lines.append(f"- {rating_desc}: \"{gen.prompt}\"")
+            if fb.text:
+                lines.append(f"  Comment: {fb.text}")
+
+        return "\n".join(lines) if lines else "No recent feedback available"
+
+    def explain_variant(self, variant: PromptVariant) -> str:
+        """
+        Generate a user-friendly explanation of the variant.
+
+        Returns a formatted string showing the diff and reasoning.
+        """
+        parts = []
+
+        # Header with diff summary
+        parts.append(f"**{variant.get_diff_summary()}**")
+        parts.append("")
+
+        # Reasoning (conversational)
+        if variant.reasoning:
+            parts.append(variant.reasoning)
+            parts.append("")
+
+        # What was preserved (anchored elements)
+        if variant.anchored_elements:
+            preserved = ", ".join(variant.anchored_elements)
+            parts.append(f"Preserved from base: {preserved}")
+
+        # What was added
+        if variant.modifications:
+            parts.append("Modifications:")
+            for mod in variant.modifications:
+                parts.append(f"  + {mod}")
+
+        return "\n".join(parts)

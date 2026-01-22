@@ -455,6 +455,56 @@ class Feedback:
 
 
 @dataclass
+class PromptVariant:
+    """A variant of a base prompt with tracked modifications.
+
+    Implements ADAPT-02: Claude generates prompt variants anchored to base prompt.
+    """
+
+    base_prompt: str  # Original user prompt
+    variant_prompt: str  # Modified prompt with enhancements
+    modifications: list[str] = field(default_factory=list)  # What changed from base
+    reasoning: str = ""  # Why these modifications were made (ADAPT-04)
+    anchored_elements: list[str] = field(default_factory=list)  # Elements preserved from base
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> dict:
+        return {
+            "base_prompt": self.base_prompt,
+            "variant_prompt": self.variant_prompt,
+            "modifications": self.modifications,
+            "reasoning": self.reasoning,
+            "anchored_elements": self.anchored_elements,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PromptVariant":
+        return cls(
+            base_prompt=data["base_prompt"],
+            variant_prompt=data["variant_prompt"],
+            modifications=data.get("modifications", []),
+            reasoning=data.get("reasoning", ""),
+            anchored_elements=data.get("anchored_elements", []),
+            timestamp=datetime.fromisoformat(data["timestamp"]) if "timestamp" in data else datetime.now(),
+        )
+
+    def get_diff_summary(self) -> str:
+        """Generate human-readable diff summary.
+
+        Returns format: 'Base + Variant: added lighting details, enhanced mood'
+        """
+        if not self.modifications:
+            return "Base (no modifications)"
+
+        mod_summary = ", ".join(self.modifications[:3])
+        if len(self.modifications) > 3:
+            mod_summary += f", +{len(self.modifications) - 3} more"
+
+        return f"Base + Variant: {mod_summary}"
+
+
+@dataclass
 class Session:
     """A work session tracking activity."""
 
@@ -491,3 +541,66 @@ class Session:
             last_prompt=data.get("last_prompt"),
             notes=data.get("notes"),
         )
+
+
+@dataclass
+class PromptHistoryEntry:
+    """A prompt variant with its rating and lineage for training history.
+
+    Tracks prompt evolution during training sessions to enable:
+    - Viewing all prompt variants tried (HIST-01)
+    - Understanding which variants led to which (HIST-02)
+    - Correlating prompts with their ratings
+    """
+
+    variant_id: str  # Unique identifier for this variant
+    base_prompt: str  # Original user prompt
+    variant_prompt: str  # The generated/evolved variant
+    rating: Optional[str] = None  # User rating: ++, +, -, --, or None if unrated
+    parent_variant_id: Optional[str] = None  # ID of parent variant (for lineage tracking)
+    timestamp: datetime = field(default_factory=datetime.now)
+    reasoning: str = ""  # Why this variant was generated (LLM reasoning)
+    generation_id: Optional[str] = None  # Link to Generation if one was created
+    session_id: Optional[str] = None  # Training session this belongs to
+
+    def to_dict(self) -> dict:
+        return {
+            "variant_id": self.variant_id,
+            "base_prompt": self.base_prompt,
+            "variant_prompt": self.variant_prompt,
+            "rating": self.rating,
+            "parent_variant_id": self.parent_variant_id,
+            "timestamp": self.timestamp.isoformat(),
+            "reasoning": self.reasoning,
+            "generation_id": self.generation_id,
+            "session_id": self.session_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PromptHistoryEntry":
+        return cls(
+            variant_id=data["variant_id"],
+            base_prompt=data["base_prompt"],
+            variant_prompt=data["variant_prompt"],
+            rating=data.get("rating"),
+            parent_variant_id=data.get("parent_variant_id"),
+            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now(),
+            reasoning=data.get("reasoning", ""),
+            generation_id=data.get("generation_id"),
+            session_id=data.get("session_id"),
+        )
+
+    @property
+    def is_rated(self) -> bool:
+        """Whether this variant has been rated."""
+        return self.rating is not None
+
+    @property
+    def is_positive(self) -> bool:
+        """Whether rating is positive (++ or +)."""
+        return self.rating in ("++", "+")
+
+    @property
+    def is_negative(self) -> bool:
+        """Whether rating is negative (-- or -)."""
+        return self.rating in ("--", "-")
