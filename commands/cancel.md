@@ -4,25 +4,23 @@ description: Cancel the current SplatWorld action
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-# Cancel Current Action
+# CRITICAL: Just run the CLI
 
-Stop any ongoing SplatWorld Agent action immediately.
-
-## What This Does
-
-- Stops any running training session
-- Cancels any pending conversions
-- Halts any batch operations
-- Saves current state so you can resume later
-
-## Execution
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
 export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli cancel
 ```
 
-## After Cancelling
+## FORBIDDEN ACTIONS
 
-- Training state is preserved - use `/splatworld-agent:resume-work` to continue
-- Any completed work (generated images, ratings) is saved
-- You can start fresh with `/splatworld-agent:train` anytime
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+
+## CORRECT BEHAVIOR
+
+1. Run the single bash command above
+2. The CLI handles cancellation
+
+The CLI handles cancellation. You do not control this.

@@ -4,23 +4,29 @@ description: Synthesize feedback into updated preferences
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Analyze all feedback using Claude and update the taste profile with learned preferences.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli learn
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli learn
 ```
 
-This will:
-1. Analyze all feedback history
-2. Extract preference patterns (lighting, colors, composition, etc.)
-3. Update the taste profile
-4. Mark profile as calibrated if 20+ ratings with good distribution
+## FORBIDDEN ACTIONS
 
-After learning, use `/splatworld-agent:profile` to see updated preferences.
+- Do NOT analyze feedback yourself
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+- Do NOT describe what learning means
 
-Note: Requires ANTHROPIC_API_KEY environment variable.
+## CORRECT BEHAVIOR
+
+1. Run the single bash command above
+2. The CLI handles EVERYTHING:
+   - Analyzes all feedback history
+   - Extracts preference patterns
+   - Updates the taste profile
+   - Shows learning results
+
+The CLI handles learning internally. You do not control this.

@@ -4,54 +4,38 @@ description: Initialize .splatworld/ in current project directory
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Initialize a new SplatWorld Agent project. Collect API keys first, then create the project.
-</objective>
+# Initialize SplatWorld Agent
 
-## Your task
+This command requires API keys before initialization. Ask the user for each key, then run the CLI.
 
-### Step 1: Ask for API keys
+## Step 1: Collect API keys
 
-Tell the user you need 3 API keys to set up SplatWorld Agent, then ask them to paste each one.
+Ask the user to paste their API keys one at a time:
 
-Say:
-"I'll set up SplatWorld Agent for you. Please paste your API keys one at a time:
+1. "Please paste your **Anthropic API key** (for taste learning):"
+2. "Please paste your **Google API key** (for Gemini image generation):"
+3. "Please paste your **World Labs API key** (for 3D splat conversion):"
 
-**Anthropic API key** (for taste learning):"
-
-Wait for the user to paste their Anthropic key.
-
-Then ask:
-"**Google API key** (for Nano Banana Pro image generation):"
-
-Wait for the user to paste their Google key.
-
-Then ask:
-"**World Labs API key** (for 3D splat conversion):"
-
-Wait for the user to paste their World Labs key.
-
-### Step 2: Save the API keys
-
-Once you have all three keys, save them:
+## Step 2: Save API keys
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent
-python3 -m splatworld_agent.cli setup-keys --anthropic "ANTHROPIC_KEY" --google "GOOGLE_KEY" --worldlabs "WORLDLABS_KEY"
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli setup-keys --anthropic "ANTHROPIC_KEY" --google "GOOGLE_KEY" --worldlabs "WORLDLABS_KEY"
 ```
 
-Replace the placeholders with the actual keys the user provided.
+Replace placeholders with actual keys.
 
-### Step 3: Initialize the project
+## Step 3: Initialize project
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent
-python3 -m splatworld_agent.cli init
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli init
 ```
 
-### Step 4: Confirm success
+## FORBIDDEN ACTIONS
 
-Tell the user:
-- ✓ API keys configured
-- ✓ .splatworld/ folder created
-- Next: Run `/splatworld-agent:train "your prompt"` to start training (20 images needed)
+- Do NOT add extra commentary beyond key collection
+- Do NOT intercept CLI output
+- Do NOT explain what the CLI is doing
+
+## After Success
+
+Tell the user: "Run `/splatworld-agent:train \"your prompt\"` to start training."

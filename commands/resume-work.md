@@ -4,39 +4,29 @@ description: Resume work from previous session
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Resume work from a previous session, showing history and current status.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli resume-work
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli resume-work
 ```
 
-This will:
-1. Show recent session history (last 5 sessions)
-2. Display notes from the last session if any
-3. Show current profile status (calibration, stats)
-4. Highlight unrated generations and images ready for conversion
-5. Start a new session (creates `current_session.json`)
-6. Display welcome panel with quick commands
+## FORBIDDEN ACTIONS
 
-### What gets tracked in a session
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+- Do NOT describe session history yourself
 
-- Generations created
-- Feedback/ratings given
-- 3D conversions performed
-- Learn cycles run
-- Last prompt used
+## CORRECT BEHAVIOR
 
-### Session workflow
+1. Run the single bash command above
+2. The CLI handles EVERYTHING:
+   - Shows recent session history
+   - Displays notes from last session
+   - Shows current profile status
+   - Highlights pending work
+   - Starts new session
 
-1. Start with `/splatworld-agent:resume-work`
-2. Do your work (generate, review, convert, etc.)
-3. End with `/splatworld-agent:exit` to save your session
-
-### If a session is already active
-
-If you run `resume-work` while a session is already active, it will show the current session info and suggest using `exit` first.
+The CLI handles session restoration. You do not control this.

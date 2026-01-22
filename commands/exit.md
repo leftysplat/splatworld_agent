@@ -4,34 +4,32 @@ description: Save session and exit SplatWorld Agent
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Save the current session with activity summary and exit SplatWorld Agent.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli exit
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli exit
 ```
 
-This will:
-1. Calculate session activity (generations, feedback, conversions, learns)
-2. Auto-generate a summary of work accomplished
-3. Append session to `sessions.jsonl` history
-4. Remove `current_session.json`
-5. Display farewell with session summary
+If user provides flags, pass them through:
+- `--summary "text"` → add custom summary
+- `--notes "text"` → add notes for next session
 
-### Optional flags
+## FORBIDDEN ACTIONS
 
-Add a custom summary:
-```bash
-python3 -m splatworld_agent.cli exit --summary "Explored alien landscape styles"
-```
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+- Do NOT add your own session summary
 
-Add notes for next session:
-```bash
-python3 -m splatworld_agent.cli exit --notes "Try warmer color palettes next time"
-```
+## CORRECT BEHAVIOR
 
-To resume work later, use `/splatworld-agent:resume-work`.
+1. Run the single bash command above
+2. The CLI handles EVERYTHING:
+   - Calculates session activity
+   - Generates summary
+   - Saves session to history
+   - Displays farewell
+
+The CLI handles session management. You do not control this.

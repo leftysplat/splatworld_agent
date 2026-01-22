@@ -4,22 +4,24 @@ description: View or edit your taste profile
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Display the current taste profile showing calibration status, learned preferences, and statistics.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli profile
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli profile
 ```
 
-This shows:
-- Calibration status (trained vs needs more data)
-- Training progress (X/20 ratings)
-- Learned visual style preferences
-- Learned composition preferences
-- Quality criteria (must-have, never)
-- Rating statistics
-- Prompt enhancement preview
+## FORBIDDEN ACTIONS
+
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+- Do NOT explain what the profile means
+
+## CORRECT BEHAVIOR
+
+1. Run the single bash command above
+2. The CLI displays the profile information
+
+The CLI handles profile display. You do not control this.

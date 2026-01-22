@@ -4,33 +4,28 @@ description: Update SplatWorld Agent to latest version
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Update SplatWorld Agent by pulling the latest changes from the git repository.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli update
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli update
 ```
 
-This will:
-1. Fetch updates from the remote repository
-2. Show new commits available
-3. Pull the latest changes (fast-forward only)
-4. Display update summary
+## FORBIDDEN ACTIONS
 
-### If you have local changes
+- Do NOT summarize or interpret the output
+- Do NOT ask confirmation questions
+- Do NOT intercept the CLI interaction
+- Do NOT run git commands manually
 
-If the update fails due to local changes, you can:
-```bash
-cd ~/Documents/splatworld_agent
-git stash
-git pull
-git stash pop
-```
+## CORRECT BEHAVIOR
 
-### After updating
+1. Run the single bash command above
+2. The CLI handles EVERYTHING:
+   - Fetches updates from remote
+   - Shows new commits
+   - Pulls latest changes
+   - Displays update summary
 
-Run `/splatworld-agent:help` to see any new commands or features.
+The CLI handles updates internally. You do not control this.
