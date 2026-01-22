@@ -63,3 +63,4 @@ test_output/
 *.spz
 *.ply
 .planning/
+generated_images/
