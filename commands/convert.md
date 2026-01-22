@@ -4,23 +4,27 @@ description: Convert loved images to 3D splats
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
 
-<objective>
-Convert images rated ++ (love) to 3D Gaussian splats using the Marble API.
-</objective>
+# CRITICAL: Just run the CLI
 
-## Your task
-
-First show what would be converted:
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
-python3 -m splatworld_agent.cli convert --dry-run
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert
 ```
 
-If user confirms, run the actual conversion:
+## FORBIDDEN ACTIONS
 
-```bash
-python3 -m splatworld_agent.cli convert
-```
+- Do NOT run with --dry-run first
+- Do NOT summarize or interpret the output
+- Do NOT ask your own confirmation questions
+- Do NOT intercept the CLI interaction
 
-Note: Each conversion costs $1.50 via the Marble API. Requires WORLDLABS_API_KEY environment variable.
+## CORRECT BEHAVIOR
+
+1. Run the single bash command above
+2. The CLI handles EVERYTHING interactively:
+   - Shows available generations
+   - Asks user to paste a generation ID or type "convert all"
+   - Handles the conversion
+
+The CLI will prompt the user directly. You do not control this.
