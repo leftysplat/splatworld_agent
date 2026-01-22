@@ -1509,10 +1509,10 @@ def learn(dry_run: bool):
 
 
 @main.command()
-@click.argument("prompt", nargs=-1, required=False)
+@click.argument("args", nargs=-1, required=False)
 @click.option("--count", "-n", default=None, type=int, help="Number of images to generate (default: infinite until stopped)")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
-def train(prompt: tuple, count: int, generator: str):
+def train(args: tuple, count: int, generator: str):
     """Adaptive training mode - generates one image at a time with immediate adaptation.
 
     ADAPT-01: Training generates one image at a time (replaces batch-then-review)
@@ -1523,8 +1523,9 @@ def train(prompt: tuple, count: int, generator: str):
 
     Examples:
         splatworld-agent train "cozy cabin interior"       # Train until stopped
-        splatworld-agent train "cozy cabin interior" -n 10 # Train for 10 images
-        splatworld-agent train                              # Resume if training state exists
+        splatworld-agent train 10 "cozy cabin interior"    # Train for 10 images
+        splatworld-agent train 5                           # Train for 5 images (resume prompt)
+        splatworld-agent train                             # Resume if training state exists
 
     During training:
         - Rate each image immediately after viewing (++/+/-/--)
@@ -1554,15 +1555,27 @@ def train(prompt: tuple, count: int, generator: str):
     # Check for existing training state to resume
     training_state = _load_training_state(manager)
 
+    # Parse args: first arg could be count (if numeric) or start of prompt
+    # /train 5 -> count=5, prompt from state
+    # /train "my prompt" -> count=None, prompt="my prompt"
+    # /train 5 "my prompt" -> count=5, prompt="my prompt"
+    prompt_parts = []
+    for i, arg in enumerate(args):
+        if i == 0 and count is None and arg.isdigit():
+            count = int(arg)
+        else:
+            prompt_parts.append(arg)
+
     # Determine the prompt to use
-    if prompt:
-        prompt_text = " ".join(prompt)
+    if prompt_parts:
+        prompt_text = " ".join(prompt_parts)
     elif training_state and training_state.get("base_prompt"):
         prompt_text = training_state["base_prompt"]
         console.print(f"[cyan]Resuming training with:[/cyan] {prompt_text}")
     else:
         console.print("[red]Error: No prompt provided and no training state to resume.[/red]")
         console.print("[dim]Usage: splatworld-agent train \"your prompt\"[/dim]")
+        console.print("[dim]       splatworld-agent train 5  (to train 5 images with saved prompt)[/dim]")
         sys.exit(1)
 
     # Initialize training session

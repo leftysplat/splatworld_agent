@@ -18,8 +18,11 @@ Each rating is used immediately to influence the next variant.
 # Train until stopped
 splatworld-agent train "cozy cabin interior"
 
-# Train for specific count
-splatworld-agent train "cozy cabin interior" -n 10
+# Train for specific count (number as first argument)
+splatworld-agent train 10 "cozy cabin interior"
+
+# Train N images using saved prompt
+splatworld-agent train 5
 
 # Resume previous session (auto-detects state)
 splatworld-agent train
