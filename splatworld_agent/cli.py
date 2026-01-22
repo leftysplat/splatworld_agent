@@ -2045,5 +2045,49 @@ def resume_work():
     ))
 
 
+@main.command()
+@click.option("--open", "open_id", help="Open viewer URL for a specific generation ID")
+@click.pass_context
+def splats(ctx: click.Context, open_id: str = None) -> None:
+    """List all converted splats with their World Labs viewer URLs."""
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+    generations = manager.get_all_generations()
+
+    # Filter to only generations with viewer_url
+    splat_gens = [g for g in generations if g.viewer_url]
+
+    if not splat_gens:
+        console.print("[yellow]No converted splats found.[/yellow]")
+        console.print("[dim]Run 'splatworld-agent convert' to create 3D splats from loved images.[/dim]")
+        return
+
+    if open_id:
+        # Find the generation and open its URL
+        gen = next((g for g in splat_gens if g.id == open_id or g.id.startswith(open_id)), None)
+        if not gen:
+            console.print(f"[red]No splat found with ID: {open_id}[/red]")
+            return
+        import webbrowser
+        console.print(f"[blue]Opening viewer for {gen.id}...[/blue]")
+        webbrowser.open(gen.viewer_url)
+        return
+
+    # List all splats
+    console.print(f"\n[bold]Converted Splats ({len(splat_gens)})[/bold]\n")
+
+    for gen in sorted(splat_gens, key=lambda g: g.timestamp, reverse=True):
+        console.print(f"[cyan]{gen.id}[/cyan]")
+        console.print(f"  Prompt: {gen.prompt[:60]}{'...' if len(gen.prompt) > 60 else ''}")
+        console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
+        console.print()
+
+    console.print("[dim]Tip: Use --open <id> to open a viewer directly, e.g.: splatworld-agent splats --open abc123[/dim]")
+
+
 if __name__ == "__main__":
     main()
