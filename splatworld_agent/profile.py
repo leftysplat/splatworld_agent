@@ -301,6 +301,32 @@ class ProfileManager:
 
         return generations
 
+    def get_all_generations(self) -> list[Generation]:
+        """Get all generations (no limit)."""
+        generations = []
+
+        if not self.generations_dir.exists():
+            return generations
+
+        # Get all generation directories sorted by date
+        date_dirs = sorted(self.generations_dir.iterdir(), reverse=True)
+
+        for date_dir in date_dirs:
+            if not date_dir.is_dir():
+                continue
+
+            gen_dirs = sorted(date_dir.iterdir(), reverse=True)
+            for gen_dir in gen_dirs:
+                if not gen_dir.is_dir():
+                    continue
+
+                metadata_path = gen_dir / "metadata.json"
+                if metadata_path.exists():
+                    with open(metadata_path) as f:
+                        generations.append(Generation.from_dict(json.load(f)))
+
+        return generations
+
     def get_last_generation(self) -> Optional[Generation]:
         """Get the most recent generation."""
         recent = self.get_recent_generations(limit=1)
