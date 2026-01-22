@@ -22,7 +22,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from splatworld_agent import __version__
 from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE
 from splatworld_agent.profile import ProfileManager
-from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHistoryEntry
+from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHistoryEntry, ExplorationMode
 from splatworld_agent.learning import LearningEngine, enhance_prompt, PromptAdapter
 from splatworld_agent.display import display
 
@@ -1509,34 +1509,29 @@ def learn(dry_run: bool):
 
 
 @main.command()
-@click.argument("prompt", nargs=-1, required=True)
-@click.option("--images-per-round", "-n", default=5, help="Images to generate per round")
+@click.argument("prompt", nargs=-1, required=False)
+@click.option("--count", "-n", default=None, type=int, help="Number of images to generate (default: infinite until stopped)")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
-@click.option("--mode", "-m", type=click.Choice(["explore", "refine"]), default=None, help="Exploration mode (explore=diverse, refine=targeted)")
-def train(prompt: tuple, images_per_round: int, generator: str, mode: str):
-    """Guided training mode to calibrate your taste profile.
+def train(prompt: tuple, count: int, generator: str):
+    """Adaptive training mode - generates one image at a time with immediate adaptation.
 
-    Runs generate-review-learn cycles until the profile is calibrated
-    (minimum 20 rated images with good positive/negative distribution).
+    ADAPT-01: Training generates one image at a time (replaces batch-then-review)
+    ADAPT-03: Claude adapts next variant based on each rating immediately
+    ADAPT-05: Default behavior: generate 5 images before suggesting prompt change
+    ADAPT-06: User can manually change base prompt anytime during training
+    ADAPT-07: /train N accepts optional count parameter for number of generations
 
-    Exploration modes (MODE-01/MODE-02):
-        --mode explore  Diverse variants across dimensions (default)
-        --mode refine   Small targeted tweaks to what works
+    Examples:
+        splatworld-agent train "cozy cabin interior"       # Train until stopped
+        splatworld-agent train "cozy cabin interior" -n 10 # Train for 10 images
+        splatworld-agent train                              # Resume if training state exists
 
-    Switch modes during training:
-        splatworld-agent mode refine   # Then continue training
-
-    Example:
-        splatworld-agent train "cozy cabin interior"
-        # Generates 5 images, you review them, learns, repeats until calibrated
-
-        splatworld-agent train "cozy cabin" --mode refine
-        # Fine-tune with small targeted changes
+    During training:
+        - Rate each image immediately after viewing (++/+/-/--)
+        - Every 5 images, you'll be asked if you want to change the base prompt
+        - Type 'new: your new prompt' anytime to change the base prompt
+        - Use Ctrl+C or type 'cancel' to stop gracefully
     """
-    from splatworld_agent.models import CalibrationStatus
-
-    prompt_text = " ".join(prompt)
-
     project_dir = get_project_dir()
     if not project_dir:
         console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
@@ -1553,156 +1548,309 @@ def train(prompt: tuple, images_per_round: int, generator: str, mode: str):
             console.print(f"  - {issue}")
         sys.exit(1)
 
-    # Determine exploration mode (command line overrides config)
-    exploration_mode = ExplorationMode.from_string(mode or config.defaults.exploration_mode)
-    mode_display = "explore (diverse)" if exploration_mode == ExplorationMode.EXPLORE_WIDE else "refine (targeted)"
-
     profile = manager.load_profile()
+    gen_name = generator or config.defaults.image_generator
 
-    if profile.is_calibrated:
-        console.print("[green]Profile is already calibrated![/green]")
-        console.print(f"[dim]Calibrated at: {profile.calibration.calibrated_at}[/dim]")
-        console.print(f"[dim]Total feedback: {profile.stats.feedback_count}[/dim]")
-        return
+    # Check for existing training state to resume
+    training_state = _load_training_state(manager)
 
-    min_feedback = CalibrationStatus.MIN_FEEDBACK_FOR_CALIBRATION
+    # Determine the prompt to use
+    if prompt:
+        prompt_text = " ".join(prompt)
+    elif training_state and training_state.get("base_prompt"):
+        prompt_text = training_state["base_prompt"]
+        console.print(f"[cyan]Resuming training with:[/cyan] {prompt_text}")
+    else:
+        console.print("[red]Error: No prompt provided and no training state to resume.[/red]")
+        console.print("[dim]Usage: splatworld-agent train \"your prompt\"[/dim]")
+        sys.exit(1)
+
+    # Initialize training session
+    session_id = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+    # Initialize or restore training state
+    if training_state and training_state.get("base_prompt") == prompt_text:
+        images_generated = training_state.get("images_generated", 0)
+        last_variant_id = training_state.get("last_variant_id")
+        session_id = training_state.get("session_id", session_id)
+        console.print(f"[dim]Resuming from image {images_generated + 1}[/dim]")
+    else:
+        images_generated = 0
+        last_variant_id = None
+        # Start fresh training state
+        _save_training_state(manager, {
+            "session_id": session_id,
+            "base_prompt": prompt_text,
+            "images_generated": 0,
+            "last_variant_id": None,
+            "started_at": datetime.now().isoformat(),
+            "status": "active",
+        })
+
+    # Display training panel
+    target_str = f"{count} images" if count else "until stopped"
     console.print(Panel.fit(
-        f"[bold]Training Mode[/bold]\n\n"
-        f"Training your taste profile with: {prompt_text}\n"
-        f"Mode: {mode_display}\n\n"
-        f"Requirements for calibration:\n"
-        f"  - Minimum {min_feedback} rated images\n"
-        f"  - At least 10% positive feedback (++/+)\n"
-        f"  - At least 10% negative feedback (--/-)\n\n"
-        f"Current progress: {profile.stats.feedback_count}/{min_feedback} ratings\n"
-        f"  Positive: {profile.stats.positive_count} ({profile.stats.love_count} loves, {profile.stats.like_count} likes)\n"
-        f"  Negative: {profile.stats.negative_count} ({profile.stats.hate_count} hates, {profile.stats.dislike_count} dislikes)\n\n"
-        f"[dim]Press Ctrl+C at any time to pause training.[/dim]",
-        title="Taste Profile Training",
+        f"[bold]Adaptive Training Mode[/bold]\n\n"
+        f"Base prompt: [cyan]{prompt_text}[/cyan]\n"
+        f"Target: {target_str}\n"
+        f"Progress: {images_generated} images generated\n\n"
+        f"[bold]During training:[/bold]\n"
+        f"  Rate each image: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate\n"
+        f"  Skip: [dim]s[/dim] | Cancel: [dim]cancel[/dim] or Ctrl+C\n"
+        f"  Change prompt: Type [cyan]new: your new prompt[/cyan]\n\n"
+        f"[dim]Claude will adapt variants based on your ratings.[/dim]",
+        title="SplatWorld Training",
     ))
 
-    gen_name = generator or config.defaults.image_generator
-    round_num = 0
+    # Initialize generators
+    if gen_name == "nano":
+        from splatworld_agent.generators.nano import NanoGenerator
+        img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
+    else:
+        from splatworld_agent.generators.gemini import GeminiGenerator
+        img_gen = GeminiGenerator(api_key=config.api_keys.google)
+
+    # Initialize prompt adapter for variant generation
+    adapter = PromptAdapter(api_key=config.api_keys.anthropic)
+
+    # Get recent feedback for context
+    recent_feedback = _get_recent_feedback_for_adapter(manager, limit=10)
+
+    cancelled = False
+    images_since_prompt_check = 0
+    PROMPT_CHECK_INTERVAL = 5  # ADAPT-05: Suggest prompt change every 5 images
 
     try:
-        while not profile.is_calibrated:
-            round_num += 1
-            remaining = min_feedback - profile.stats.feedback_count
-            images_this_round = min(images_per_round, remaining + 2)  # Generate a few extra
+        while True:
+            # Check count limit
+            if count and images_generated >= count:
+                console.print(f"\n[green]Reached target of {count} images![/green]")
+                break
 
-            console.print(f"\n[bold cyan]━━━ Round {round_num} ━━━[/bold cyan]")
-            console.print(f"Generating {images_this_round} images...")
+            images_generated += 1
+            images_since_prompt_check += 1
 
-            # Get current profile for enhancement
+            console.print(f"\n[bold cyan]--- Image {images_generated} ---[/bold cyan]")
+
+            # Generate variant using PromptAdapter (ADAPT-02, ADAPT-03)
             profile = manager.load_profile()
-            enhanced_prompt = enhance_prompt(prompt_text, profile)
 
-            if enhanced_prompt != prompt_text and round_num > 1:
-                console.print(f"[dim]Prompt enhanced with learned preferences[/dim]")
+            try:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Generating prompt variant...", total=None)
 
-            # Generate images
-            if gen_name == "nano":
-                from splatworld_agent.generators.nano import NanoGenerator
-                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
-            else:
-                from splatworld_agent.generators.gemini import GeminiGenerator
-                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+                    variant = adapter.generate_variant(
+                        base_prompt=prompt_text,
+                        profile=profile,
+                        recent_feedback=recent_feedback,
+                    )
 
-            batch_gen_ids = []
+                    progress.update(task, description="Variant generated!")
+
+                # ADAPT-04: Show reasoning
+                console.print(f"\n[bold]Variant:[/bold] {variant.variant_prompt}")
+                if variant.reasoning:
+                    console.print(f"[dim]Reasoning: {variant.reasoning}[/dim]")
+                if variant.modifications:
+                    console.print(f"[dim]Modifications: {', '.join(variant.modifications[:3])}[/dim]")
+
+            except Exception as e:
+                # Fall back to enhanced prompt if adapter fails
+                console.print(f"[yellow]Adapter failed, using enhanced prompt: {e}[/yellow]")
+                variant = None
+                enhanced_prompt = enhance_prompt(prompt_text, profile)
+
+            # Generate image
+            gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+            variant_id = f"var-{uuid.uuid4().hex[:12]}"
+
+            final_prompt = variant.variant_prompt if variant else enhanced_prompt
 
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                for i in range(images_this_round):
-                    task = progress.add_task(f"Generating {i+1}/{images_this_round}...", total=None)
+                task = progress.add_task(f"Generating image with {gen_name}...", total=None)
 
-                    gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
-                    batch_gen_ids.append(gen_id)
+                image_bytes = img_gen.generate(final_prompt, seed=None)
 
-                    image_bytes = img_gen.generate(enhanced_prompt, seed=None)
+                # Save generation
+                image_dir, metadata_dir = manager.save_generation(Generation(
+                    id=gen_id,
+                    prompt=prompt_text,
+                    enhanced_prompt=final_prompt,
+                    timestamp=datetime.now(),
+                    metadata={
+                        "generator": gen_name,
+                        "training_session": session_id,
+                        "variant_id": variant_id,
+                        "image_number": images_generated,
+                    },
+                ))
 
-                    image_dir, metadata_dir = manager.save_generation(Generation(
-                        id=gen_id,
-                        prompt=prompt_text,
-                        enhanced_prompt=enhanced_prompt,
-                        timestamp=datetime.now(),
-                        metadata={"generator": gen_name, "training_round": round_num},
-                    ))
+                image_path = image_dir / "source.png"
+                with open(image_path, "wb") as f:
+                    f.write(image_bytes)
 
-                    image_path = image_dir / "source.png"
-                    with open(image_path, "wb") as f:
-                        f.write(image_bytes)
+                # Update metadata with path
+                metadata_path = metadata_dir / "metadata.json"
+                with open(metadata_path) as f:
+                    gen_data = json.load(f)
+                gen_data["source_image_path"] = str(image_path)
+                with open(metadata_path, "w") as f:
+                    json.dump(gen_data, f, indent=2)
 
-                    metadata_path = metadata_dir / "metadata.json"
-                    with open(metadata_path) as f:
-                        gen_data = json.load(f)
-                    gen_data["source_image_path"] = str(image_path)
-                    with open(metadata_path, "w") as f:
-                        json.dump(gen_data, f, indent=2)
+                progress.update(task, description="[green]Image generated!")
 
-                    progress.update(task, description=f"[green]{i+1}/{images_this_round} done[/green]")
+            console.print(f"[dim]File: {image_path}[/dim]")
 
-            img_gen.close()
+            # Open image for viewing
+            try:
+                import subprocess
+                subprocess.Popen(["open", str(image_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
 
-            # Review phase
-            console.print(f"\n[bold]Review Phase[/bold]")
-            console.print("Rate each image: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate [dim]s[/dim]=skip")
+            # Save prompt history entry (unrated initially)
+            history_entry = PromptHistoryEntry(
+                variant_id=variant_id,
+                base_prompt=prompt_text,
+                variant_prompt=final_prompt,
+                rating=None,
+                parent_variant_id=last_variant_id,
+                reasoning=variant.reasoning if variant else "",
+                generation_id=gen_id,
+                session_id=session_id,
+            )
+            manager.save_prompt_variant(history_entry)
 
-            reviewed = 0
-            for gen_id in batch_gen_ids:
-                gen = manager.get_generation(gen_id)
-                if not gen or not gen.source_image_path:
+            # Get rating immediately (ADAPT-01)
+            rating = None
+            while True:
+                try:
+                    rating_input = input("\nRating (++/+/-/--/s/cancel) or 'new: prompt': ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    cancelled = True
+                    break
+
+                # Check for cancel
+                if rating_input.lower() == "cancel":
+                    cancelled = True
+                    break
+
+                # Check for prompt change (ADAPT-06)
+                if rating_input.lower().startswith("new:"):
+                    new_prompt = rating_input[4:].strip()
+                    if new_prompt:
+                        prompt_text = new_prompt
+                        console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
+                        images_since_prompt_check = 0  # Reset counter
+                        # Update training state with new prompt
+                        _save_training_state(manager, {
+                            "session_id": session_id,
+                            "base_prompt": prompt_text,
+                            "images_generated": images_generated,
+                            "last_variant_id": variant_id,
+                            "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
+                            "status": "active",
+                        })
+                        # Clear recent feedback context since we're exploring new territory
+                        recent_feedback = []
+                    else:
+                        console.print("[yellow]Please provide a prompt after 'new:'[/yellow]")
                     continue
 
-                console.print(f"\n[dim]Image {reviewed + 1}/{len(batch_gen_ids)}[/dim]")
+                # Check for skip
+                if rating_input.lower() == "s":
+                    console.print("[dim]Skipped[/dim]")
+                    break
 
-                # Open image
+                # Parse rating
+                if rating_input in ("++", "+", "-", "--"):
+                    rating = rating_input
+
+                    # Save feedback
+                    fb = Feedback(
+                        generation_id=gen_id,
+                        timestamp=datetime.now(),
+                        rating=rating,
+                    )
+                    manager.add_or_replace_feedback(fb)
+
+                    # Update prompt history with rating
+                    manager.update_prompt_variant_rating(variant_id, rating)
+
+                    rating_display = {
+                        "++": "[green]Love![/green]",
+                        "+": "[green]Good[/green]",
+                        "-": "[yellow]Meh[/yellow]",
+                        "--": "[red]Hate[/red]"
+                    }
+                    console.print(rating_display[rating])
+
+                    # Update recent feedback for next adaptation (ADAPT-03)
+                    gen = manager.get_generation(gen_id)
+                    if gen:
+                        recent_feedback.append((gen, fb))
+                        # Keep only last 10
+                        recent_feedback = recent_feedback[-10:]
+
+                    break
+                else:
+                    console.print("[red]Invalid. Use ++, +, -, --, s, cancel, or 'new: prompt'[/red]")
+
+            if cancelled:
+                break
+
+            # Update training state
+            last_variant_id = variant_id
+            _save_training_state(manager, {
+                "session_id": session_id,
+                "base_prompt": prompt_text,
+                "images_generated": images_generated,
+                "last_variant_id": variant_id,
+                "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
+                "status": "active",
+            })
+
+            # ADAPT-05: Suggest prompt change every 5 images
+            if images_since_prompt_check >= PROMPT_CHECK_INTERVAL:
+                console.print(f"\n[cyan]You've generated {images_since_prompt_check} images with this prompt.[/cyan]")
+                console.print("Continue with same prompt, or type 'new: your new prompt' to change.")
+
                 try:
-                    import subprocess
-                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+                    change_input = input("Press Enter to continue, or enter new prompt: ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    cancelled = True
+                    break
 
-                while True:
-                    try:
-                        rating = input("Rating (++/+/-/--/s): ").strip().lower()
-                    except (KeyboardInterrupt, EOFError):
-                        raise KeyboardInterrupt
+                if change_input.lower().startswith("new:"):
+                    new_prompt = change_input[4:].strip()
+                    if new_prompt:
+                        prompt_text = new_prompt
+                        console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
+                        recent_feedback = []  # Clear context for new prompt
+                elif change_input and not change_input.lower().startswith("new:"):
+                    # Treat bare input as new prompt
+                    prompt_text = change_input
+                    console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
+                    recent_feedback = []
 
-                    if rating == "s":
-                        console.print("[dim]Skipped[/dim]")
-                        break
-                    elif rating in ("++", "+", "-", "--"):
-                        fb = Feedback(
-                            generation_id=gen_id,
-                            timestamp=datetime.now(),
-                            rating=rating,
-                        )
-                        manager.add_or_replace_feedback(fb)
+                images_since_prompt_check = 0
 
-                        rating_display = {"++": "[green]Love![/green]", "+": "[green]Good[/green]",
-                                          "-": "[yellow]Meh[/yellow]", "--": "[red]Hate[/red]"}
-                        console.print(rating_display[rating])
-                        reviewed += 1
-                        break
-                    else:
-                        console.print("[red]Invalid. Use ++, +, -, --, or s[/red]")
-
-            # Reload profile to get updated stats
+            # Learn periodically (every 5 ratings)
             profile = manager.load_profile()
-
-            # Learn phase (if enough feedback)
-            if profile.stats.feedback_count >= 3:
-                console.print(f"\n[bold]Learning Phase[/bold]")
-                console.print(f"Analyzing {profile.stats.feedback_count} feedback entries...")
-
+            if profile.stats.feedback_count > 0 and profile.stats.feedback_count % 5 == 0:
                 try:
+                    console.print("[dim]Learning from recent feedback...[/dim]")
                     engine = LearningEngine(api_key=config.api_keys.anthropic)
-                    generations = manager.get_recent_generations(limit=50)
+                    generations = manager.get_recent_generations(limit=20)
                     feedbacks = manager.get_feedback_history()
-
                     result = engine.synthesize_from_history(generations, feedbacks, profile)
 
                     if result.get("updates"):
@@ -1711,44 +1859,260 @@ def train(prompt: tuple, images_per_round: int, generator: str, mode: str):
                         profile.calibration.learn_count += 1
 
                         # Check calibration
-                        can_calibrate, reason = profile.stats.can_calibrate()
-                        if can_calibrate:
+                        can_calibrate, _ = profile.stats.can_calibrate()
+                        if can_calibrate and not profile.calibration.is_calibrated:
                             profile.calibration.is_calibrated = True
                             profile.calibration.calibrated_at = datetime.now()
+                            console.print("[bold green]Profile calibrated![/bold green]")
 
                         manager.save_profile(profile)
-                        console.print("[green]Preferences updated![/green]")
-                    else:
-                        console.print("[dim]No new patterns identified yet.[/dim]")
-
                 except Exception as e:
-                    console.print(f"[yellow]Learning skipped: {e}[/yellow]")
-
-            # Show progress
-            console.print(f"\n[bold]Progress:[/bold] {profile.stats.feedback_count}/{min_feedback} ratings")
-            console.print(f"  [green]Positive: {profile.stats.positive_count}[/green] | [red]Negative: {profile.stats.negative_count}[/red]")
-
-            can_calibrate, reason = profile.stats.can_calibrate()
-            if not can_calibrate:
-                console.print(f"  [yellow]{reason}[/yellow]")
-
-        # Training complete!
-        console.print(Panel.fit(
-            f"[bold green]Training Complete![/bold green]\n\n"
-            f"Your taste profile is now calibrated.\n\n"
-            f"Total ratings: {profile.stats.feedback_count}\n"
-            f"Training rounds: {round_num}\n"
-            f"Learn cycles: {profile.calibration.learn_count}\n\n"
-            f"[bold]Next steps:[/bold]\n"
-            f"  [cyan]splatworld-agent batch \"{prompt_text}\"[/cyan] - Generate with learned preferences\n"
-            f"  [cyan]splatworld-agent convert[/cyan] - Convert favorites to 3D splats",
-            title="Calibration Complete",
-        ))
+                    console.print(f"[dim]Learning skipped: {e}[/dim]")
 
     except KeyboardInterrupt:
-        console.print("\n\n[yellow]Training paused.[/yellow]")
-        console.print(f"Progress saved: {profile.stats.feedback_count}/{min_feedback} ratings")
-        console.print("Run [cyan]splatworld-agent train[/cyan] again to continue.")
+        cancelled = True
+
+    finally:
+        img_gen.close()
+
+        # Update training state
+        status = "cancelled" if cancelled else "completed"
+        _save_training_state(manager, {
+            "session_id": session_id,
+            "base_prompt": prompt_text,
+            "images_generated": images_generated,
+            "last_variant_id": last_variant_id,
+            "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
+            "ended_at": datetime.now().isoformat(),
+            "status": status,
+        })
+
+    # Show summary
+    profile = manager.load_profile()
+    console.print(Panel.fit(
+        f"[bold]Training {'Cancelled' if cancelled else 'Complete'}[/bold]\n\n"
+        f"Images generated: {images_generated}\n"
+        f"Total ratings: {profile.stats.feedback_count}\n"
+        f"Profile: {'[green]CALIBRATED[/green]' if profile.is_calibrated else profile.training_progress}\n\n"
+        f"[bold]Resume:[/bold]\n"
+        f"  [cyan]splatworld-agent resume[/cyan] - Continue training\n"
+        f"  [cyan]splatworld-agent train \"{prompt_text}\"[/cyan] - Continue with same prompt\n\n"
+        f"[bold]Next steps:[/bold]\n"
+        f"  [cyan]splatworld-agent convert[/cyan] - Convert loved images to 3D splats",
+        title="Training Summary",
+    ))
+
+
+def _load_training_state(manager: ProfileManager) -> dict:
+    """Load current training state from session file."""
+    if not manager.current_session_path.exists():
+        return {}
+
+    try:
+        with open(manager.current_session_path) as f:
+            data = json.load(f)
+        # Only return if it's a training session
+        if data.get("session_id", "").startswith("train-"):
+            return data
+        return {}
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def _save_training_state(manager: ProfileManager, state: dict) -> None:
+    """Save training state to session file."""
+    temp_path = manager.current_session_path.with_suffix(".tmp")
+    with open(temp_path, "w") as f:
+        json.dump(state, f, indent=2)
+    temp_path.replace(manager.current_session_path)
+
+
+def _get_recent_feedback_for_adapter(manager: ProfileManager, limit: int = 10) -> list:
+    """Get recent (generation, feedback) pairs for adapter context."""
+    feedbacks = manager.get_feedback_history(limit=limit * 2)
+    pairs = []
+
+    for fb in feedbacks[-limit:]:
+        gen = manager.get_generation(fb.generation_id)
+        if gen:
+            pairs.append((gen, fb))
+
+    return pairs
+
+
+@main.command("cancel")
+def cancel_training():
+    """Stop the current training session gracefully (ADAPT-08).
+
+    Saves the current training state so you can resume later with 'resume'.
+    This is equivalent to pressing Ctrl+C during training or typing 'cancel'.
+
+    Example:
+        splatworld-agent cancel
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check for active training session
+    training_state = _load_training_state(manager)
+
+    if not training_state:
+        console.print("[yellow]No active training session to cancel.[/yellow]")
+        return
+
+    if training_state.get("status") != "active":
+        console.print(f"[yellow]Training session already {training_state.get('status', 'ended')}.[/yellow]")
+        return
+
+    # Mark as cancelled
+    training_state["status"] = "cancelled"
+    training_state["ended_at"] = datetime.now().isoformat()
+    _save_training_state(manager, training_state)
+
+    console.print(Panel.fit(
+        f"[bold]Training Cancelled[/bold]\n\n"
+        f"Session: {training_state.get('session_id', 'unknown')}\n"
+        f"Images generated: {training_state.get('images_generated', 0)}\n"
+        f"Base prompt: {training_state.get('base_prompt', 'unknown')}\n\n"
+        f"[bold]Resume with:[/bold]\n"
+        f"  [cyan]splatworld-agent resume[/cyan]\n"
+        f"  [cyan]splatworld-agent train[/cyan] (auto-resumes)",
+        title="Training Stopped",
+    ))
+
+
+@main.command("resume")
+def resume_training():
+    """Continue an interrupted training session (SESS-01, SESS-02).
+
+    Prompts: "Continue training on unrated images, or start new generations?"
+
+    - Continue unrated: Shows unrated images from previous session for rating
+    - Start new: Resumes generating new images with same base prompt
+
+    Example:
+        splatworld-agent resume
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Check for training state
+    training_state = _load_training_state(manager)
+
+    if not training_state:
+        console.print("[yellow]No training session to resume.[/yellow]")
+        console.print("[dim]Start a new session with: splatworld-agent train \"your prompt\"[/dim]")
+        return
+
+    session_id = training_state.get("session_id", "unknown")
+    base_prompt = training_state.get("base_prompt", "")
+    images_generated = training_state.get("images_generated", 0)
+    status = training_state.get("status", "unknown")
+
+    console.print(Panel.fit(
+        f"[bold]Training Session Found[/bold]\n\n"
+        f"Session: {session_id}\n"
+        f"Status: {status}\n"
+        f"Base prompt: [cyan]{base_prompt}[/cyan]\n"
+        f"Images generated: {images_generated}",
+        title="Resume Training",
+    ))
+
+    # SESS-02: Check for unrated images from this session
+    unrated_in_session = []
+    all_unrated = manager.get_all_unrated_generations()
+
+    for gen, batch_ctx in all_unrated:
+        if gen.metadata.get("training_session") == session_id:
+            unrated_in_session.append(gen)
+
+    if unrated_in_session:
+        console.print(f"\n[yellow]Found {len(unrated_in_session)} unrated images from this session.[/yellow]")
+        console.print("\nOptions:")
+        console.print("  [cyan]1[/cyan] - Rate unrated images first, then continue")
+        console.print("  [cyan]2[/cyan] - Skip unrated and start new generations")
+        console.print("  [cyan]q[/cyan] - Quit without resuming")
+
+        try:
+            choice = input("\nChoice (1/2/q): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            choice = "q"
+
+        if choice == "q":
+            console.print("[dim]Resume cancelled.[/dim]")
+            return
+
+        if choice == "1":
+            # Rate unrated images
+            console.print(f"\n[bold]Rating {len(unrated_in_session)} unrated images[/bold]")
+            console.print("Rate each: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate [dim]s[/dim]=skip")
+
+            rated = 0
+            for gen in unrated_in_session:
+                console.print(f"\n[dim]Image {rated + 1}/{len(unrated_in_session)}[/dim]")
+                console.print(f"Variant: {gen.enhanced_prompt[:80]}...")
+
+                if gen.source_image_path:
+                    console.print(f"[dim]File: {gen.source_image_path}[/dim]")
+                    try:
+                        import subprocess
+                        subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
+
+                while True:
+                    try:
+                        rating_input = input("Rating (++/+/-/--/s/q): ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        rating_input = "q"
+
+                    if rating_input.lower() == "q":
+                        console.print("[dim]Stopped rating.[/dim]")
+                        break
+                    elif rating_input.lower() == "s":
+                        console.print("[dim]Skipped[/dim]")
+                        break
+                    elif rating_input in ("++", "+", "-", "--"):
+                        fb = Feedback(
+                            generation_id=gen.id,
+                            timestamp=datetime.now(),
+                            rating=rating_input,
+                        )
+                        manager.add_or_replace_feedback(fb)
+
+                        # Update prompt history if variant_id exists
+                        variant_id = gen.metadata.get("variant_id")
+                        if variant_id:
+                            manager.update_prompt_variant_rating(variant_id, rating_input)
+
+                        rating_display = {"++": "[green]Love![/green]", "+": "[green]Good[/green]",
+                                          "-": "[yellow]Meh[/yellow]", "--": "[red]Hate[/red]"}
+                        console.print(rating_display[rating_input])
+                        rated += 1
+                        break
+                    else:
+                        console.print("[red]Invalid. Use ++, +, -, --, s, or q[/red]")
+
+                if rating_input.lower() == "q":
+                    break
+
+            console.print(f"\n[green]Rated {rated} images.[/green]")
+
+    # Now continue with new generations
+    console.print(f"\n[cyan]Continuing training with: {base_prompt}[/cyan]")
+    console.print("[dim]Run 'splatworld-agent train' to generate new images.[/dim]")
+
+    # Reactivate session for train command to pick up
+    training_state["status"] = "active"
+    _save_training_state(manager, training_state)
 
 
 @main.command("install-prompts")
