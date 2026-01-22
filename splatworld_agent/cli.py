@@ -769,7 +769,8 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
 @click.option("--current", "-c", is_flag=True, help="Review current batch (default if no batch specified)")
 @click.option("--limit", "-n", default=10, help="Number of images to review")
 @click.option("--unrated", is_flag=True, help="Only show unrated images")
-def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool):
+@click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
+def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool, inline: bool):
     """Interactively review and rate generated images.
 
     By default, reviews the current batch if one exists.
@@ -822,19 +823,16 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
             console.print(f"Prompt: {gen.prompt}")
 
             if gen.source_image_path:
-                # Try inline display first
-                displayed = display.display_image(Path(gen.source_image_path), max_width=80)
-
-                if displayed:
-                    console.print("[dim]Preview shown above[/dim]")
+                if inline:
+                    # Inline preview mode
+                    displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+                    if displayed:
+                        console.print("[dim]Preview shown above[/dim]")
+                    else:
+                        console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
                 else:
-                    # Fallback to file path + external viewer
+                    # Non-intrusive mode (default) - DISP-05
                     console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
-                    try:
-                        import subprocess
-                        subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    except Exception:
-                        pass
 
             while True:
                 try:
@@ -943,20 +941,16 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
 
         # Show image path
         if gen.source_image_path:
-            # Try inline display first
-            displayed = display.display_image(Path(gen.source_image_path), max_width=80)
-
-            if displayed:
-                console.print("[dim]Preview shown above[/dim]")
+            if inline:
+                # Inline preview mode
+                displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+                if displayed:
+                    console.print("[dim]Preview shown above[/dim]")
+                else:
+                    console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
             else:
-                # Fallback to file path + external viewer
+                # Non-intrusive mode (default) - DISP-05
                 console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
-                # Try to open image in default viewer
-                try:
-                    import subprocess
-                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
 
         # Get rating
         while True:
