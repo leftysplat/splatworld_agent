@@ -1839,9 +1839,10 @@ def train(args: tuple, count: int, generator: str):
                         console.print("[yellow]Please provide a prompt after 'new:'[/yellow]")
                     continue
 
-                # Check for skip
+                # Check for skip - exits training without forcing more ratings
                 if rating_input.lower() == "s":
-                    console.print("[dim]Skipped[/dim]")
+                    console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld-agent:review[/dim]")
+                    cancelled = True
                     break
 
                 # Parse rating
