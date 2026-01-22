@@ -1162,6 +1162,7 @@ def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: b
     marble = MarbleClient(api_key=config.api_keys.marble)
     total_cost = 0.0
     converted = 0
+    converted_results = []  # Track results to show links at end
 
     console.print("\n[bold cyan]Starting 3D conversion...[/bold cyan]")
     console.print("[dim]This may take a few minutes per image.[/dim]\n")
@@ -1260,6 +1261,7 @@ def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: b
 
                 total_cost += result.cost_usd
                 converted += 1
+                converted_results.append((gen.id, result.viewer_url, splat_path))
                 progress.update(task, description=f"[green]Converted: {gen.id}[/green]")
 
     finally:
@@ -1268,6 +1270,16 @@ def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: b
     console.print(f"\n[bold green]Conversion complete![/bold green]")
     console.print(f"Converted: {converted}/{len(to_convert)} images")
     console.print(f"Total cost: [yellow]${total_cost:.2f}[/yellow]")
+
+    # Show viewer links for all converted images
+    if converted_results:
+        console.print("\n[bold]View your 3D splats:[/bold]")
+        for gen_id, viewer_url, splat_path in converted_results:
+            console.print(f"  [cyan]{gen_id}[/cyan]")
+            if viewer_url:
+                console.print(f"    Marble Labs: [link={viewer_url}]{viewer_url}[/link]")
+            if splat_path:
+                console.print(f"    Local file: {splat_path}")
 
 
 @main.command()
