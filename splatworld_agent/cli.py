@@ -973,11 +973,14 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
                     timestamp=datetime.now(),
                     rating=rating_input,
                 )
-                manager.add_feedback(fb)
+                was_replaced, old_rating = manager.add_or_replace_feedback(fb)
 
                 rating_display = {"++": "[green]Love it![/green]", "+": "[green]Good[/green]",
                                   "-": "[yellow]Not great[/yellow]", "--": "[red]Hate it[/red]"}
-                console.print(f"Recorded: {rating_display[rating_input]}")
+                if was_replaced:
+                    console.print(f"Updated: {rating_display[rating_input]} (was {old_rating})")
+                else:
+                    console.print(f"Recorded: {rating_display[rating_input]}")
                 reviewed += 1
                 if rating_input == "++":
                     loved += 1
@@ -1605,7 +1608,7 @@ def train(prompt: tuple, images_per_round: int, generator: str):
                             timestamp=datetime.now(),
                             rating=rating,
                         )
-                        manager.add_feedback(fb)
+                        manager.add_or_replace_feedback(fb)
 
                         rating_display = {"++": "[green]Love![/green]", "+": "[green]Good[/green]",
                                           "-": "[yellow]Meh[/yellow]", "--": "[red]Hate[/red]"}
