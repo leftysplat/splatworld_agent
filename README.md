@@ -359,6 +359,27 @@ splatworld-agent splats                    # List all splats with URLs
 splatworld-agent splats --open abc123      # Open specific splat in browser
 ```
 
+#### `download-splats`
+Download splat files that haven't been downloaded yet.
+```bash
+splatworld-agent download-splats [OPTIONS]
+```
+| Option | Description |
+|--------|-------------|
+| `--all` | Download all missing splats without confirmation |
+
+Finds all converted generations (with viewer_url) that don't have local splat files
+and downloads them from WorldLabs. Useful when `download_splats` is disabled in config
+or for retrying failed downloads.
+
+**Note:** Downloading splats may require a premium WorldLabs account.
+
+**Examples:**
+```bash
+splatworld-agent download-splats           # List missing splats, prompt to download
+splatworld-agent download-splats --all     # Download all without confirmation
+```
+
 ---
 
 ### Taste Profile
@@ -455,6 +476,7 @@ All CLI commands are available as slash commands in Claude Code:
 | `/splatworld-agent:learn` | `splatworld-agent learn` |
 | `/splatworld-agent:convert` | `splatworld-agent convert` |
 | `/splatworld-agent:splats` | `splatworld-agent splats` |
+| `/splatworld-agent:download-splats` | `splatworld-agent download-splats` |
 | `/splatworld-agent:display-links` | `splatworld-agent splats` |
 | `/splatworld-agent:profile` | `splatworld-agent profile` |
 | `/splatworld-agent:exemplar <path>` | `splatworld-agent exemplar <path>` |
@@ -470,21 +492,30 @@ After initialization, your project will have:
 
 ```
 your-project/
-├── .splatworld/
-│   ├── profile.json           # Your taste profile
-│   ├── feedback.jsonl         # Feedback history
-│   ├── exemplars/             # Reference images you love
-│   ├── anti-exemplars/        # Reference images you hate
-│   └── generations/           # Generated content
-│       └── 2026-01-21/
-│           ├── kitchen-001/
-│           │   ├── source.png
-│           │   ├── splat.spz
-│           │   ├── mesh.obj
-│           │   └── metadata.json
-│           └── kitchen-002/
-│               └── ...
+├── generated_images/          # Visible: Your generated images
+│   └── 2026-01-21/
+│       ├── gen-20260121-123456-abc123/
+│       │   └── source.png
+│       └── gen-20260121-123457-def456/
+│           └── source.png
+├── downloaded_splats/         # Visible: Your 3D splat files
+│   ├── gen-20260121-123456-abc123.spz
+│   └── gen-20260121-123457-def456.spz
+└── .splatworld/               # Hidden: Config and metadata
+    ├── profile.json           # Your taste profile
+    ├── feedback.jsonl         # Feedback history
+    ├── sessions.jsonl         # Session history
+    ├── exemplars/             # Reference images you love
+    ├── anti-exemplars/        # Reference images you hate
+    └── generations/           # Generation metadata
+        └── 2026-01-21/
+            └── gen-20260121-123456-abc123/
+                └── metadata.json
 ```
+
+**Note:** Images and splats are stored in visible directories (`generated_images/`, `downloaded_splats/`)
+so you can easily browse them in Finder or your file manager. Metadata is stored in the hidden
+`.splatworld/` directory.
 
 ## Taste Profile Structure
 

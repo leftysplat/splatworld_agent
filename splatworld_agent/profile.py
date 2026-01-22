@@ -19,9 +19,13 @@ class ProfileManager:
     FEEDBACK_FILE = "feedback.jsonl"
     SESSIONS_FILE = "sessions.jsonl"
     CURRENT_SESSION_FILE = "current_session.json"
-    GENERATIONS_DIR = "generations"
+    GENERATIONS_DIR = "generations"  # Inside .splatworld (metadata only)
     EXEMPLARS_DIR = "exemplars"
     ANTI_EXEMPLARS_DIR = "anti-exemplars"
+
+    # Visible directories at project root (for user-accessible files)
+    IMAGES_DIR = "generated_images"
+    SPLATS_DIR = "downloaded_splats"
 
     def __init__(self, project_dir: Path):
         """Initialize profile manager for a project directory."""
@@ -38,7 +42,18 @@ class ProfileManager:
 
     @property
     def generations_dir(self) -> Path:
+        """Metadata directory inside .splatworld."""
         return self.splatworld_dir / self.GENERATIONS_DIR
+
+    @property
+    def images_dir(self) -> Path:
+        """Visible directory for generated images."""
+        return self.project_dir / self.IMAGES_DIR
+
+    @property
+    def splats_dir(self) -> Path:
+        """Visible directory for downloaded splats."""
+        return self.project_dir / self.SPLATS_DIR
 
     @property
     def exemplars_dir(self) -> Path:
@@ -62,11 +77,15 @@ class ProfileManager:
 
     def initialize(self) -> TasteProfile:
         """Initialize a new project with empty taste profile."""
-        # Create directories
+        # Create hidden directories (metadata/config)
         self.splatworld_dir.mkdir(parents=True, exist_ok=True)
         self.generations_dir.mkdir(exist_ok=True)
         self.exemplars_dir.mkdir(exist_ok=True)
         self.anti_exemplars_dir.mkdir(exist_ok=True)
+
+        # Create visible directories (user-accessible files)
+        self.images_dir.mkdir(exist_ok=True)
+        self.splats_dir.mkdir(exist_ok=True)
 
         # Create empty profile
         profile = TasteProfile()
@@ -240,18 +259,30 @@ class ProfileManager:
 
         return exemplar
 
-    def save_generation(self, generation: Generation) -> Path:
-        """Save a generation to the generations directory."""
-        # Create date-based subdirectory
-        date_dir = self.generations_dir / generation.timestamp.strftime("%Y-%m-%d")
-        date_dir.mkdir(exist_ok=True)
+    def save_generation(self, generation: Generation) -> tuple[Path, Path]:
+        """Save a generation to the generations directory.
 
-        # Create generation directory
-        gen_dir = date_dir / generation.id
-        gen_dir.mkdir(exist_ok=True)
+        Returns:
+            Tuple of (image_dir, metadata_dir) where:
+            - image_dir: visible directory for images (generated_images/date/id/)
+            - metadata_dir: hidden directory for metadata (.splatworld/generations/date/id/)
+        """
+        date_str = generation.timestamp.strftime("%Y-%m-%d")
 
-        # Save metadata
-        metadata_path = gen_dir / "metadata.json"
+        # Create visible directory for images
+        image_date_dir = self.images_dir / date_str
+        image_date_dir.mkdir(parents=True, exist_ok=True)
+        image_dir = image_date_dir / generation.id
+        image_dir.mkdir(exist_ok=True)
+
+        # Create hidden directory for metadata
+        metadata_date_dir = self.generations_dir / date_str
+        metadata_date_dir.mkdir(parents=True, exist_ok=True)
+        metadata_dir = metadata_date_dir / generation.id
+        metadata_dir.mkdir(exist_ok=True)
+
+        # Save metadata to hidden directory
+        metadata_path = metadata_dir / "metadata.json"
         with open(metadata_path, "w") as f:
             json.dump(generation.to_dict(), f, indent=2)
 
@@ -260,7 +291,16 @@ class ProfileManager:
         profile.stats.total_generations += 1
         self.save_profile(profile)
 
-        return gen_dir
+        return image_dir, metadata_dir
+
+    def get_metadata_dir(self, generation_id: str) -> Optional[Path]:
+        """Get metadata directory for a generation ID."""
+        for date_dir in self.generations_dir.iterdir():
+            if date_dir.is_dir():
+                gen_dir = date_dir / generation_id
+                if gen_dir.exists():
+                    return gen_dir
+        return None
 
     def get_generation(self, generation_id: str) -> Optional[Generation]:
         """Get a specific generation by ID."""

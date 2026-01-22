@@ -370,6 +370,7 @@ class Generation:
     timestamp: datetime
     source_image_path: Optional[str] = None
     splat_path: Optional[str] = None
+    splat_url: Optional[str] = None  # WorldLabs URL for manual download
     mesh_path: Optional[str] = None
     viewer_url: Optional[str] = None
     metadata: dict = field(default_factory=dict)
@@ -383,6 +384,7 @@ class Generation:
             "timestamp": self.timestamp.isoformat(),
             "source_image_path": self.source_image_path,
             "splat_path": self.splat_path,
+            "splat_url": self.splat_url,
             "mesh_path": self.mesh_path,
             "viewer_url": self.viewer_url,
             "metadata": self.metadata,
@@ -398,6 +400,7 @@ class Generation:
             timestamp=datetime.fromisoformat(data["timestamp"]),
             source_image_path=data.get("source_image_path"),
             splat_path=data.get("splat_path"),
+            splat_url=data.get("splat_url"),
             mesh_path=data.get("mesh_path"),
             viewer_url=data.get("viewer_url"),
             metadata=data.get("metadata", {}),
