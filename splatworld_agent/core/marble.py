@@ -69,7 +69,7 @@ class MarbleResult:
     @property
     def viewer_url(self) -> str:
         """Get the Marble web viewer URL."""
-        return f"https://worldlabs.ai/viewer/{self.world_id}"
+        return f"https://marble.worldlabs.ai/world/{self.world_id}"
 
 
 class MarbleClient:
@@ -239,7 +239,8 @@ class MarbleClient:
             operation = self.poll_operation(operation_id)
 
             if operation.done:
-                if operation.error:
+                # Only raise if error exists AND response is empty (true failure)
+                if operation.error and not operation.response:
                     raise MarbleConversionError(f"Generation failed: {operation.error}")
                 return operation
 
