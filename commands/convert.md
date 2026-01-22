@@ -38,16 +38,15 @@ Ask them to paste the generation ID, then run:
 export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
 ```
 
-## Step 4: Done
+## Step 4: STOP
 
-After conversion completes, the CLI shows:
-- Conversion summary
-- Marble Labs viewer URLs for each converted splat
+After CLI prints "Conversion complete!" — **STOP IMMEDIATELY**.
 
-**That's it. The command is complete.** Do not wait for more input.
+Tell user the conversion finished and show any viewer URLs from the output. Then END your response. Do not run any more tools. Do not wait for anything.
 
 ## FORBIDDEN ACTIONS
 
 - Do NOT skip asking the user
 - Do NOT guess which generation to convert
-- Do NOT wait or hang after conversion completes
+- Do NOT run any tools after conversion completes
+- Do NOT wait or hang — just respond and stop
