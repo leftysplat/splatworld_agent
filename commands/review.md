@@ -1,32 +1,49 @@
 ---
 name: splatworld-agent:review
 description: Interactively review and rate generated images
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
-# CRITICAL: Just run the CLI
+# Review Command
 
-**Your ONLY job is to run this ONE bash command:**
+This command shows unrated images and collects ratings. Follow these steps.
+
+## Step 1: List unrated images
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --unrated
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --list
 ```
+
+If all images are rated, stop here.
+
+## Step 2: For each unrated image, ask for rating
+
+Use AskUserQuestion with:
+- header: "Rate"
+- question: "Rate this image: [GENERATION_ID] - [PROMPT]?"
+- options:
+  - "++" — Love it (will convert to 3D splat)
+  - "+" — Good
+  - "-" — Not great
+  - "--" — Hate it
+  - "Skip" — Don't rate this one
+  - "Done" — Stop reviewing
+
+## Step 3: Record the rating
+
+For each rating (not Skip or Done):
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+```
+
+## Step 4: After review
+
+Tell user:
+- How many images were rated
+- If they have 3+ ratings, suggest `/splatworld-agent:learn`
+- If they have loved images, suggest `/splatworld-agent:convert`
 
 ## FORBIDDEN ACTIONS
 
-- Do NOT summarize or interpret the output
-- Do NOT ask your own confirmation questions
-- Do NOT intercept the CLI interaction
-- Do NOT describe what ratings mean
-- Do NOT offer to help with ratings
-
-## CORRECT BEHAVIOR
-
-1. Run the single bash command above
-2. The CLI handles EVERYTHING interactively:
-   - Opens each unrated image
-   - Prompts for feedback (++/+/-/--/s/q)
-   - Records ratings
-3. After CLI completes, remind user about `/splatworld-agent:learn`
-
-The CLI will prompt the user directly. You do not control this.
+- Do NOT skip asking the user for each rating
+- Do NOT guess ratings

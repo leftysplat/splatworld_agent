@@ -1,34 +1,62 @@
 ---
 name: splatworld-agent:train
-description: Run adaptive training CLI (DO NOT implement yourself)
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*train*)
+description: Guided training mode to calibrate your taste profile (20 images)
+allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
-# CRITICAL: DO NOT IMPLEMENT TRAINING YOURSELF
+# Train Command
 
-**Your ONLY job is to run this ONE bash command:**
+Training generates images one at a time and asks for ratings. Follow these steps.
+
+## Step 1: Parse user arguments
+
+User will provide a prompt and optional count:
+- `/train "cozy cabin"` → prompt="cozy cabin"
+- `/train 5 "cozy cabin"` → count=5, prompt="cozy cabin"
+
+## Step 2: Generate ONE image
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli train [USER_ARGS]
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli train "USER_PROMPT" --single
 ```
 
-Pass the user's arguments directly to the CLI. Examples:
-- User says `/train 2 "wild west"` → run `... train 2 "wild west"`
-- User says `/train "alien beach"` → run `... train "alien beach"`
-- User says `/train 5` → run `... train 5`
+This generates one image and shows the file path and generation ID.
+
+## Step 3: Ask for rating
+
+Use AskUserQuestion with:
+- header: "Rate"
+- question: "Rate this image (view the file path shown above)?"
+- options:
+  - "++" — Love it!
+  - "+" — Good
+  - "-" — Not great
+  - "--" — Hate it
+  - "Skip" — Don't rate, continue
+  - "Done" — Stop training
+
+## Step 4: Record the rating
+
+If user gave a rating (not Skip or Done):
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+```
+
+## Step 5: Loop or finish
+
+- If user chose "Done" → Stop and show summary
+- If user specified a count and reached it → Stop and show summary
+- Otherwise → Go back to Step 2 (generate next image)
+
+## After training
+
+Tell user:
+- How many images were generated and rated
+- If they have 3+ ratings, learning happens automatically
+- Suggest `/splatworld-agent:profile` to see their taste profile
 
 ## FORBIDDEN ACTIONS
 
-- Do NOT create prompt variations yourself
-- Do NOT call `generate` command directly
-- Do NOT plan multiple images upfront
-- Do NOT describe what you're going to do
-- Do NOT implement any training logic
-
-## CORRECT BEHAVIOR
-
-1. Parse user arguments
-2. Run the single bash command above
-3. The CLI handles EVERYTHING else interactively
-
-The CLI will prompt the user for ratings between each image. You do not control this - the CLI does.
+- Do NOT run train without --single flag (causes interactive input issues)
+- Do NOT skip asking for ratings
+- Do NOT guess ratings

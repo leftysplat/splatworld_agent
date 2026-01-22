@@ -806,19 +806,16 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 @click.option("--limit", "-n", default=10, help="Number of images to review")
 @click.option("--unrated", is_flag=True, help="Only show unrated images")
 @click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
-def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool, inline: bool):
-    """Interactively review and rate generated images.
+@click.option("--list", "list_only", is_flag=True, help="List unrated images without prompting for ratings")
+@click.option("--rate", "rate_value", help="Rate a generation (++/+/-/--)")
+@click.option("--generation", "-g", "rate_gen_id", help="Generation ID to rate (use with --rate)")
+def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool, inline: bool, list_only: bool, rate_value: str, rate_gen_id: str):
+    """Review and rate generated images.
 
-    By default, reviews the current batch if one exists.
-    Use --all to review ALL unrated images across all batches.
-
-    Opens each image and prompts for quick feedback:
-      ++ = love it
-      +  = like it
-      -  = not great
-      -- = hate it
-      s  = skip
-      q  = quit review
+    Usage:
+      review --list                 List unrated images
+      review --rate ++ -g <id>      Rate a specific generation
+      review --all                  Interactive review (terminal only)
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -826,6 +823,45 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
+
+    # Non-interactive mode: Rate a specific generation
+    if rate_value and rate_gen_id:
+        if rate_value not in ("++", "+", "-", "--"):
+            console.print(f"[red]Invalid rating: {rate_value}. Use ++, +, -, or --[/red]")
+            sys.exit(1)
+
+        gen = manager.get_generation(rate_gen_id)
+        if not gen:
+            console.print(f"[red]Generation not found: {rate_gen_id}[/red]")
+            sys.exit(1)
+
+        fb = Feedback(
+            generation_id=gen.id,
+            timestamp=datetime.now(),
+            rating=rate_value,
+        )
+        manager.add_or_replace_feedback(fb)
+
+        rating_display = {"++": "[green]Love it![/green]", "+": "[green]Good[/green]",
+                          "-": "[yellow]Not great[/yellow]", "--": "[red]Hate it[/red]"}
+        console.print(f"Rated {gen.id}: {rating_display[rate_value]}")
+        console.print(f"[dim]Prompt: {gen.prompt[:50]}...[/dim]")
+        return
+
+    # Non-interactive mode: List unrated images
+    if list_only:
+        unrated_gens = manager.get_all_unrated_generations()
+        if not unrated_gens:
+            console.print("[green]All images have been rated![/green]")
+            return
+
+        console.print(Panel.fit(
+            f"[bold]Unrated Images ({len(unrated_gens)})[/bold]\n\n" +
+            "\n".join(f"  [cyan]{g.id}[/cyan]: {g.prompt[:45]}..." for g, _ in unrated_gens[:limit]),
+            title="Review",
+        ))
+        console.print(f"\n[dim]Use --rate RATING -g ID to rate an image[/dim]")
+        return
 
     # --all flag: Review ALL unrated images across all batches
     if all_unrated:
@@ -1037,14 +1073,17 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
 
 
 @main.command()
+@click.option("--all-loved", is_flag=True, help="Convert all '++' rated images")
 @click.option("--all-positive", is_flag=True, help="Convert all positively rated (+ and ++)")
 @click.option("--generation", "-g", multiple=True, help="Specific generation IDs to convert")
-@click.option("--dry-run", is_flag=True, help="Show what would be converted without doing it")
-def convert(all_positive: bool, generation: tuple, dry_run: bool):
+@click.option("--list", "list_only", is_flag=True, help="Just list available generations, don't convert")
+def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: bool):
     """Convert loved images to 3D splats.
 
-    By default, converts all images rated '++' (love it) that don't
-    already have splats.
+    Usage:
+      convert --list              Show available generations
+      convert -g <id>             Convert specific generation
+      convert --all-loved         Convert all '++' rated images
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -1059,7 +1098,26 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
         console.print("Set WORLDLABS_API_KEY environment variable.")
         sys.exit(1)
 
-    # Find generations to convert
+    # Find generations that could be converted
+    generations = manager.get_recent_generations(limit=50)
+    feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
+
+    available = []
+    for gen in generations:
+        fb = feedbacks.get(gen.id)
+        if not fb:
+            continue
+        if gen.splat_path:
+            continue
+        if fb.rating in ("++", "+"):
+            available.append((gen, fb.rating))
+
+    if not available:
+        console.print("[yellow]No images available for conversion.[/yellow]")
+        console.print("[dim]Rate images with '++' to mark them for conversion.[/dim]")
+        return
+
+    # Determine what to convert
     to_convert = []
 
     if generation:
@@ -1070,83 +1128,33 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
                 to_convert.append(gen)
             else:
                 console.print(f"[yellow]Generation not found: {gen_id}[/yellow]")
-    else:
-        # Find loved generations without splats
-        generations = manager.get_recent_generations(limit=50)
-        feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
+    elif all_loved:
+        # All '++' rated
+        to_convert = [g for g, r in available if r == "++"]
+    elif all_positive:
+        # All '+' and '++' rated
+        to_convert = [g for g, r in available]
 
-        for gen in generations:
-            fb = feedbacks.get(gen.id)
-            if not fb:
-                continue
-
-            # Skip if already has splat
-            if gen.splat_path:
-                continue
-
-            # Check rating
-            if all_positive and fb.rating in ("++", "+"):
-                to_convert.append(gen)
-            elif fb.rating == "++":
-                to_convert.append(gen)
+    # If just listing or no action specified, show available and exit
+    if list_only or (not generation and not all_loved and not all_positive):
+        console.print(Panel.fit(
+            f"[bold]Found {len(available)} images ready for 3D conversion[/bold]\n\n"
+            "Available generations:\n" +
+            "\n".join(f"  [cyan]{g.id}[/cyan] [{r}]: {g.prompt[:45]}..." for g, r in available),
+            title="3D Conversion",
+        ))
+        console.print("\n[dim]Use -g <id> to convert a specific image, or --all-loved to convert all.[/dim]")
+        return
 
     if not to_convert:
-        console.print("[yellow]No images to convert.[/yellow]")
-        console.print("[dim]Rate images with '++' to mark them for conversion.[/dim]")
+        console.print("[yellow]No matching generations to convert.[/yellow]")
         return
 
-    # Show available images
-    console.print(Panel.fit(
-        f"[bold]Found {len(to_convert)} images ready for 3D conversion[/bold]\n\n"
-        "Available generations:\n" +
-        "\n".join(f"  [cyan]{g.id}[/cyan]: {g.prompt[:50]}..." for g in to_convert),
-        title="3D Conversion",
-    ))
-
-    if dry_run:
-        console.print("\n[yellow]Dry run - no conversions performed.[/yellow]")
-        return
-
-    # Recommend one at a time and ask for input
-    console.print("\n[yellow]It's recommended to start with one conversion due to generation time.[/yellow]")
-    console.print("\nPaste a generation ID to convert that image, or type '[bold]convert all[/bold]' to convert all.")
-    console.print("[dim]Type 'cancel' to abort.[/dim]\n")
-
-    try:
-        choice = input("Your choice: ").strip()
-    except (KeyboardInterrupt, EOFError):
-        choice = "cancel"
-
-    if choice.lower() == "cancel":
-        console.print("[yellow]Conversion cancelled.[/yellow]")
-        return
-
-    # Handle "convert all"
-    if choice.lower() == "convert all":
-        cost = len(to_convert) * 1.50
-        console.print(f"\n[yellow]Converting all {len(to_convert)} images. Estimated cost: ${cost:.2f}[/yellow]")
-        try:
-            confirm = input("Proceed? (y/N): ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            confirm = "n"
-        if confirm != "y":
-            console.print("[yellow]Conversion cancelled.[/yellow]")
-            return
-    else:
-        # Find the specific generation
-        selected = None
-        for g in to_convert:
-            if g.id == choice or choice in g.id:
-                selected = g
-                break
-
-        if not selected:
-            console.print(f"[red]Generation not found: {choice}[/red]")
-            console.print("[dim]Make sure to paste the exact generation ID.[/dim]")
-            return
-
-        to_convert = [selected]
-        console.print(f"\n[green]Converting: {selected.id}[/green]")
+    # Show what will be converted
+    cost = len(to_convert) * 1.50
+    console.print(f"\n[bold]Converting {len(to_convert)} image(s)[/bold] — Estimated cost: ${cost:.2f}")
+    for g in to_convert:
+        console.print(f"  [cyan]{g.id}[/cyan]: {g.prompt[:50]}...")
 
     # Convert each image
     from splatworld_agent.core.marble import MarbleClient
@@ -1554,26 +1562,17 @@ def learn(dry_run: bool):
 @click.argument("args", nargs=-1, required=False)
 @click.option("--count", "-n", default=None, type=int, help="Number of images to generate (default: infinite until stopped)")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
-def train(args: tuple, count: int, generator: str):
-    """Adaptive training mode - generates one image at a time with immediate adaptation.
+@click.option("--no-rate", "no_rate", is_flag=True, help="Generate without prompting for ratings (rate later with review)")
+@click.option("--single", is_flag=True, help="Generate exactly one image and exit (for scripted workflows)")
+def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
+    """Adaptive training mode - generates images with prompt adaptation.
 
-    ADAPT-01: Training generates one image at a time (replaces batch-then-review)
-    ADAPT-03: Claude adapts next variant based on each rating immediately
-    ADAPT-05: Default behavior: generate 5 images before suggesting prompt change
-    ADAPT-06: User can manually change base prompt anytime during training
-    ADAPT-07: /train N accepts optional count parameter for number of generations
+    Usage:
+      train "prompt"                  Interactive training (terminal only)
+      train "prompt" --single         Generate ONE image and exit
+      train "prompt" -n 5 --no-rate   Generate 5 images, rate later with review
 
-    Examples:
-        splatworld-agent train "cozy cabin interior"       # Train until stopped
-        splatworld-agent train 10 "cozy cabin interior"    # Train for 10 images
-        splatworld-agent train 5                           # Train for 5 images (resume prompt)
-        splatworld-agent train                             # Resume if training state exists
-
-    During training:
-        - Rate each image immediately after viewing (++/+/-/--)
-        - Every 5 images, you'll be asked if you want to change the base prompt
-        - Type 'new: your new prompt' anytime to change the base prompt
-        - Use Ctrl+C or type 'cancel' to stop gracefully
+    For Claude Code / scripted use, always use --single or --no-rate.
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -1607,6 +1606,11 @@ def train(args: tuple, count: int, generator: str):
             count = int(arg)
         else:
             prompt_parts.append(arg)
+
+    # Handle --single flag
+    if single:
+        count = 1
+        no_rate = True
 
     # Determine the prompt to use
     if prompt_parts:
@@ -1833,59 +1837,65 @@ def train(args: tuple, count: int, generator: str):
             )
             manager.save_prompt_variant(history_entry)
 
-            # Get rating immediately (ADAPT-01)
+            # Get rating (skip if --no-rate flag is set)
             rating = None
-            while True:
-                try:
-                    rating_input = input("\nRating (++/+/-/--/s/cancel) or 'new: prompt': ").strip()
-                except (KeyboardInterrupt, EOFError):
-                    cancelled = True
-                    break
+            if no_rate:
+                # Non-interactive mode: skip rating, user can rate later with review
+                console.print(f"[dim]Generated: {gen_id}[/dim]")
+                console.print(f"[dim]Rate later with: splatworld-agent review --rate RATING -g {gen_id}[/dim]")
+            else:
+                # Interactive mode: prompt for rating
+                while True:
+                    try:
+                        rating_input = input("\nRating (++/+/-/--/s/cancel) or 'new: prompt': ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        cancelled = True
+                        break
 
-                # Check for cancel
-                if rating_input.lower() == "cancel":
-                    cancelled = True
-                    break
+                    # Check for cancel
+                    if rating_input.lower() == "cancel":
+                        cancelled = True
+                        break
 
-                # Check for prompt change (ADAPT-06)
-                if rating_input.lower().startswith("new:"):
-                    new_prompt = rating_input[4:].strip()
-                    if new_prompt:
-                        prompt_text = new_prompt
-                        console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
-                        images_since_prompt_check = 0  # Reset counter
-                        # Update training state with new prompt
-                        _save_training_state(manager, {
-                            "session_id": session_id,
-                            "base_prompt": prompt_text,
-                            "images_generated": images_generated,
-                            "last_variant_id": variant_id,
-                            "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
-                            "status": "active",
-                        })
-                        # Clear recent feedback context since we're exploring new territory
-                        recent_feedback = []
-                    else:
-                        console.print("[yellow]Please provide a prompt after 'new:'[/yellow]")
-                    continue
+                    # Check for prompt change (ADAPT-06)
+                    if rating_input.lower().startswith("new:"):
+                        new_prompt = rating_input[4:].strip()
+                        if new_prompt:
+                            prompt_text = new_prompt
+                            console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
+                            images_since_prompt_check = 0  # Reset counter
+                            # Update training state with new prompt
+                            _save_training_state(manager, {
+                                "session_id": session_id,
+                                "base_prompt": prompt_text,
+                                "images_generated": images_generated,
+                                "last_variant_id": variant_id,
+                                "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
+                                "status": "active",
+                            })
+                            # Clear recent feedback context since we're exploring new territory
+                            recent_feedback = []
+                        else:
+                            console.print("[yellow]Please provide a prompt after 'new:'[/yellow]")
+                        continue
 
-                # Check for skip - exits training without forcing more ratings
-                if rating_input.lower() == "s":
-                    console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld-agent:review[/dim]")
-                    cancelled = True
-                    break
+                    # Check for skip - exits training without forcing more ratings
+                    if rating_input.lower() == "s":
+                        console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld-agent:review[/dim]")
+                        cancelled = True
+                        break
 
-                # Parse rating
-                if rating_input in ("++", "+", "-", "--"):
-                    rating = rating_input
+                    # Parse rating
+                    if rating_input in ("++", "+", "-", "--"):
+                        rating = rating_input
 
-                    # Save feedback
-                    fb = Feedback(
-                        generation_id=gen_id,
-                        timestamp=datetime.now(),
-                        rating=rating,
-                    )
-                    manager.add_or_replace_feedback(fb)
+                        # Save feedback
+                        fb = Feedback(
+                            generation_id=gen_id,
+                            timestamp=datetime.now(),
+                            rating=rating,
+                        )
+                        manager.add_or_replace_feedback(fb)
 
                     # Update prompt history with rating
                     manager.update_prompt_variant_rating(variant_id, rating)
@@ -1923,8 +1933,8 @@ def train(args: tuple, count: int, generator: str):
                 "status": "active",
             })
 
-            # ADAPT-05: Suggest prompt change every 5 images
-            if images_since_prompt_check >= PROMPT_CHECK_INTERVAL:
+            # ADAPT-05: Suggest prompt change every 5 images (interactive mode only)
+            if not no_rate and images_since_prompt_check >= PROMPT_CHECK_INTERVAL:
                 console.print(f"\n[cyan]You've generated {images_since_prompt_check} images with this prompt.[/cyan]")
                 console.print("Continue with same prompt, or type 'new: your new prompt' to change.")
 

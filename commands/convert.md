@@ -1,30 +1,45 @@
 ---
 name: splatworld-agent:convert
 description: Convert loved images to 3D splats
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
-# CRITICAL: Just run the CLI
+# Convert Command
 
-**Your ONLY job is to run this ONE bash command:**
+This command requires user input. Follow these steps exactly.
+
+## Step 1: Show available generations
+
+Run this command to list what's available:
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert --list
+```
+
+## Step 2: Ask user what to convert
+
+Use AskUserQuestion with:
+- header: "Convert"
+- question: "Which generation(s) do you want to convert to 3D splats?"
+- options:
+  - "Convert all loved (++)" — Convert all images rated ++
+  - "Pick one" — I'll paste the generation ID
+
+## Step 3: Run conversion
+
+**If user chose "Convert all loved":**
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert --all-loved
+```
+
+**If user chose "Pick one":**
+Ask them to paste the generation ID, then run:
+```bash
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
 ```
 
 ## FORBIDDEN ACTIONS
 
-- Do NOT run with --dry-run first
-- Do NOT summarize or interpret the output
-- Do NOT ask your own confirmation questions
-- Do NOT intercept the CLI interaction
-
-## CORRECT BEHAVIOR
-
-1. Run the single bash command above
-2. The CLI handles EVERYTHING interactively:
-   - Shows available generations
-   - Asks user to paste a generation ID or type "convert all"
-   - Handles the conversion
-
-The CLI will prompt the user directly. You do not control this.
+- Do NOT skip asking the user
+- Do NOT guess which generation to convert
+- Do NOT intercept or summarize CLI output beyond what's needed
