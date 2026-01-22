@@ -1600,22 +1600,10 @@ def train(args: tuple, count: int, generator: str):
             "status": "active",
         })
 
-    # Prompt user for generator choice if not specified
+    # Default to gemini if not specified (no interactive prompt needed)
     if not generator:
-        console.print(Panel.fit(
-            "[yellow]Training may use many image generations.[/yellow]\n\n"
-            "Choose your image generator:\n"
-            "  [bold]1[/bold] = Nano Banana Pro [dim](higher quality, limited quota)[/dim]\n"
-            "  [bold]2[/bold] = Gemini [dim](lower quota usage, good quality)[/dim]\n",
-            title="Generator Selection",
-        ))
-        gen_choice = console.input("[bold]Choice (1/2):[/bold] ").strip()
-        if gen_choice == "2":
-            gen_name = "gemini"
-            console.print("[dim]Using Gemini for image generation[/dim]")
-        else:
-            gen_name = "nano"
-            console.print("[dim]Using Nano Banana Pro (will fallback to Gemini if quota reached)[/dim]")
+        gen_name = "gemini"
+        console.print("[dim]Using Gemini for image generation (use --generator nano for Nano Banana Pro)[/dim]")
 
     # Display training panel
     target_str = f"{count} images" if count else "until stopped"
@@ -1623,7 +1611,7 @@ def train(args: tuple, count: int, generator: str):
         f"[bold]Adaptive Training Mode[/bold]\n\n"
         f"Base prompt: [cyan]{prompt_text}[/cyan]\n"
         f"Target: {target_str}\n"
-        f"Generator: {gen_name} [dim](fallback: gemini)[/dim]\n"
+        f"Generator: {gen_name}\n"
         f"Progress: {images_generated} images generated\n\n"
         f"[bold]During training:[/bold]\n"
         f"  Rate each image: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate\n"
