@@ -1095,14 +1095,11 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
         console.print("[dim]Rate images with '++' to mark them for conversion.[/dim]")
         return
 
-    # Estimate cost
-    cost = len(to_convert) * 1.50
+    # Show available images
     console.print(Panel.fit(
-        f"[bold]Converting {len(to_convert)} images to 3D splats[/bold]\n\n"
-        f"Estimated cost: [yellow]${cost:.2f}[/yellow]\n\n"
-        "Images to convert:\n" +
-        "\n".join(f"  - {g.id}: {g.prompt[:40]}..." for g in to_convert[:5]) +
-        (f"\n  ... and {len(to_convert) - 5} more" if len(to_convert) > 5 else ""),
+        f"[bold]Found {len(to_convert)} images ready for 3D conversion[/bold]\n\n"
+        "Available generations:\n" +
+        "\n".join(f"  [cyan]{g.id}[/cyan]: {g.prompt[:50]}..." for g in to_convert),
         title="3D Conversion",
     ))
 
@@ -1110,15 +1107,46 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
         console.print("\n[yellow]Dry run - no conversions performed.[/yellow]")
         return
 
-    # Confirm
-    try:
-        confirm = input(f"\nProceed with conversion? (y/N): ").strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        confirm = "n"
+    # Recommend one at a time and ask for input
+    console.print("\n[yellow]It's recommended to start with one conversion due to generation time.[/yellow]")
+    console.print("\nPaste a generation ID to convert that image, or type '[bold]convert all[/bold]' to convert all.")
+    console.print("[dim]Type 'cancel' to abort.[/dim]\n")
 
-    if confirm != "y":
+    try:
+        choice = input("Your choice: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        choice = "cancel"
+
+    if choice.lower() == "cancel":
         console.print("[yellow]Conversion cancelled.[/yellow]")
         return
+
+    # Handle "convert all"
+    if choice.lower() == "convert all":
+        cost = len(to_convert) * 1.50
+        console.print(f"\n[yellow]Converting all {len(to_convert)} images. Estimated cost: ${cost:.2f}[/yellow]")
+        try:
+            confirm = input("Proceed? (y/N): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            confirm = "n"
+        if confirm != "y":
+            console.print("[yellow]Conversion cancelled.[/yellow]")
+            return
+    else:
+        # Find the specific generation
+        selected = None
+        for g in to_convert:
+            if g.id == choice or choice in g.id:
+                selected = g
+                break
+
+        if not selected:
+            console.print(f"[red]Generation not found: {choice}[/red]")
+            console.print("[dim]Make sure to paste the exact generation ID.[/dim]")
+            return
+
+        to_convert = [selected]
+        console.print(f"\n[green]Converting: {selected.id}[/green]")
 
     # Convert each image
     from splatworld_agent.core.marble import MarbleClient
