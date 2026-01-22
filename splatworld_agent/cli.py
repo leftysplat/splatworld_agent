@@ -1155,10 +1155,14 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
     total_cost = 0.0
     converted = 0
 
+    console.print("\n[bold cyan]Starting 3D conversion...[/bold cyan]")
+    console.print("[dim]This may take a few minutes per image.[/dim]\n")
+
     try:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
             console=console,
         ) as progress:
             for i, gen in enumerate(to_convert):
@@ -1174,16 +1178,26 @@ def convert(all_positive: bool, generation: tuple, dry_run: bool):
 
                 image_b64 = base64.b64encode(image_bytes).decode()
 
-                def on_progress(status: str, description: str):
-                    progress.update(task, description=f"{gen.id}: {description or status}")
+                # Show generating status
+                progress.update(task, description=f"[cyan]Generating 3D splat for {gen.id}...[/cyan]")
 
-                result = marble.generate_and_wait(
-                    image_base64=image_b64,
-                    mime_type="image/png",
-                    display_name=gen.id,
-                    is_panorama=True,
-                    on_progress=on_progress,
-                )
+                def on_progress(status: str, description: str):
+                    status_text = description or status
+                    progress.update(task, description=f"[cyan]{gen.id}:[/cyan] {status_text}")
+
+                try:
+                    result = marble.generate_and_wait(
+                        image_base64=image_b64,
+                        mime_type="image/png",
+                        display_name=gen.id,
+                        is_panorama=True,
+                        on_progress=on_progress,
+                    )
+                except Exception as api_error:
+                    progress.update(task, description=f"[red]API error for {gen.id}: {api_error}[/red]")
+                    continue
+
+                progress.update(task, description=f"[green]✓ Generated splat for {gen.id}[/green]")
 
                 # Download splat file to visible splats directory (if enabled and available)
                 splat_path = None
