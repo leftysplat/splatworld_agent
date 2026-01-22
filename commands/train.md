@@ -1,44 +1,34 @@
 ---
 name: splatworld-agent:train
-description: Guided training mode to calibrate your taste profile (20 images)
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+description: Run adaptive training CLI (DO NOT implement yourself)
+allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*train*)
 ---
 
-<objective>
-Run adaptive training that generates ONE image at a time, waits for your rating, then adapts the next image based on your feedback.
-</objective>
+# CRITICAL: DO NOT IMPLEMENT TRAINING YOURSELF
 
-## Arguments
-
-- First argument: number of images to generate (optional)
-- Remaining arguments: base prompt/concept (optional if resuming)
-
-Examples:
-- `/splatworld-agent:train 5 "beach on an alien world"` - Generate 5 images
-- `/splatworld-agent:train "beach on an alien world"` - Train until stopped
-- `/splatworld-agent:train 10` - Generate 10 images using saved prompt
-- `/splatworld-agent:train` - Resume previous session
-
-## Your task
-
-**IMPORTANT: Just run the CLI command. The CLI handles everything interactively.**
-
-Run the train command and let the user interact with it directly:
+**Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent
-python3 -m splatworld_agent.cli train [ARGS]
+export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli train [USER_ARGS]
 ```
 
-The CLI will:
-1. Generate ONE prompt variant at a time
-2. Show the variant reasoning
-3. Generate the image
-4. Open it for viewing
-5. Wait for user to rate it (++/+/-/--)
-6. Use that rating to adapt the NEXT variant
-7. Repeat until count reached or user cancels
+Pass the user's arguments directly to the CLI. Examples:
+- User says `/train 2 "wild west"` → run `... train 2 "wild west"`
+- User says `/train "alien beach"` → run `... train "alien beach"`
+- User says `/train 5` → run `... train 5`
 
-**Do NOT generate multiple prompts upfront. Do NOT batch generate images.**
+## FORBIDDEN ACTIONS
 
-The adaptive loop is handled entirely by the CLI. Your job is just to invoke it with the user's arguments.
+- Do NOT create prompt variations yourself
+- Do NOT call `generate` command directly
+- Do NOT plan multiple images upfront
+- Do NOT describe what you're going to do
+- Do NOT implement any training logic
+
+## CORRECT BEHAVIOR
+
+1. Parse user arguments
+2. Run the single bash command above
+3. The CLI handles EVERYTHING else interactively
+
+The CLI will prompt the user for ratings between each image. You do not control this - the CLI does.
