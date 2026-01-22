@@ -163,6 +163,7 @@ class MarbleClient:
         """
         request_body = {
             "display_name": display_name,
+            "visibility": "public",
             "world_prompt": {
                 "type": "image",
                 "image_prompt": {
@@ -196,6 +197,7 @@ class MarbleClient:
         """
         request_body = {
             "display_name": display_name,
+            "visibility": "public",
             "world_prompt": {
                 "type": "image",
                 "image_prompt": {
