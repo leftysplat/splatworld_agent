@@ -2137,11 +2137,7 @@ def resume_training():
 
                 if gen.source_image_path:
                     console.print(f"[dim]File: {gen.source_image_path}[/dim]")
-                    try:
-                        import subprocess
-                        subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    except Exception:
-                        pass
+                    # Don't auto-open - user can view in IDE/file explorer
 
                 while True:
                     try:
