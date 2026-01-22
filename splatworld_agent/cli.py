@@ -24,6 +24,7 @@ from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR, 
 from splatworld_agent.profile import ProfileManager
 from splatworld_agent.models import TasteProfile, Feedback, Generation
 from splatworld_agent.learning import LearningEngine, enhance_prompt
+from splatworld_agent.display import display
 
 console = Console()
 
@@ -809,12 +810,19 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
             console.print(f"Prompt: {gen.prompt}")
 
             if gen.source_image_path:
-                console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
-                try:
-                    import subprocess
-                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
+                # Try inline display first
+                displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+
+                if displayed:
+                    console.print("[dim]Preview shown above[/dim]")
+                else:
+                    # Fallback to file path + external viewer
+                    console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+                    try:
+                        import subprocess
+                        subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
 
             while True:
                 try:
@@ -923,13 +931,20 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
 
         # Show image path
         if gen.source_image_path:
-            console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
-            # Try to open image in default viewer
-            try:
-                import subprocess
-                subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            # Try inline display first
+            displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+
+            if displayed:
+                console.print("[dim]Preview shown above[/dim]")
+            else:
+                # Fallback to file path + external viewer
+                console.print(f"[cyan]File: {gen.source_image_path}[/cyan]")
+                # Try to open image in default viewer
+                try:
+                    import subprocess
+                    subprocess.Popen(["open", gen.source_image_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
 
         # Get rating
         while True:
