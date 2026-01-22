@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.syntax import Syntax
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
 from splatworld_agent import __version__
 from splatworld_agent.config import Config, get_project_dir, GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE
