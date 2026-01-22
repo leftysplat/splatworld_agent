@@ -592,7 +592,8 @@ def batch_rate(ratings_input: tuple):
 @click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
 @click.option("--cycles", "-c", default=1, help="Number of cycles (generate, review, learn)")
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
-def batch(prompt: tuple, count: int, cycles: int, generator: str):
+@click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
+def batch(prompt: tuple, count: int, cycles: int, generator: str, inline: bool):
     """Generate a batch of images for review.
 
     Generates N images, then lets you review and rate them before
@@ -705,20 +706,23 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
             console.print(f"\n[bold green]Batch complete![/bold green] Generated {count} images.")
             console.print(f"[dim]Batch ID: {batch_id}[/dim]")
 
-            # Show numbered images summary with inline previews
-            console.print("\n[bold]Your images:[/bold]")
-            for i, gen_id in enumerate(batch_gen_ids, start=1):
-                gen = manager.get_generation(gen_id)
-                if gen and gen.source_image_path:
-                    console.print(f"\n[cyan]Image {i}[/cyan]")
-
-                    # Try inline display
-                    displayed = display.display_image(Path(gen.source_image_path), max_width=60)
-
-                    if displayed:
-                        console.print(f"[dim]{gen.source_image_path}[/dim]")
-                    else:
-                        console.print(f"  {gen.source_image_path}")
+            # Show image list
+            if inline:
+                # Inline preview mode
+                console.print("\n[bold]Your images:[/bold]")
+                for i, gen_id in enumerate(batch_gen_ids, start=1):
+                    gen = manager.get_generation(gen_id)
+                    if gen and gen.source_image_path:
+                        console.print(f"\n[cyan]Image {i}[/cyan]")
+                        displayed = display.display_image(Path(gen.source_image_path), max_width=60)
+                        if displayed:
+                            console.print(f"[dim]{gen.source_image_path}[/dim]")
+                        else:
+                            console.print(f"  {gen.source_image_path}")
+            else:
+                # Non-intrusive mode (default) - DISP-03
+                console.print(f"\n[bold]Images 1-{count} generated.[/bold] View externally, then rate here.")
+                console.print(f"[dim]Files saved to: {manager.splatworld_dir / 'generations'}[/dim]")
 
             # Show rating instructions with new syntax
             console.print("\n[bold]Rate your images:[/bold]")
