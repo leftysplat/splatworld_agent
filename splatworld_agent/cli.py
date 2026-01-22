@@ -705,12 +705,20 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str):
             console.print(f"\n[bold green]Batch complete![/bold green] Generated {count} images.")
             console.print(f"[dim]Batch ID: {batch_id}[/dim]")
 
-            # Show numbered images summary
+            # Show numbered images summary with inline previews
             console.print("\n[bold]Your images:[/bold]")
             for i, gen_id in enumerate(batch_gen_ids, start=1):
                 gen = manager.get_generation(gen_id)
                 if gen and gen.source_image_path:
-                    console.print(f"  [cyan]{i}[/cyan] - {gen.source_image_path}")
+                    console.print(f"\n[cyan]Image {i}[/cyan]")
+
+                    # Try inline display
+                    displayed = display.display_image(Path(gen.source_image_path), max_width=60)
+
+                    if displayed:
+                        console.print(f"[dim]{gen.source_image_path}[/dim]")
+                    else:
+                        console.print(f"  {gen.source_image_path}")
 
             # Show rating instructions with new syntax
             console.print("\n[bold]Rate your images:[/bold]")
