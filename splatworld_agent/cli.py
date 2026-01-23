@@ -3334,6 +3334,276 @@ def provider_status(json_output: bool):
 
 
 @main.command()
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("--provider", type=click.Choice(["nano", "gemini"]), default=None,
+              help="Override provider (default: nano or from training_state)")
+@click.option("--json", "json_output", is_flag=True, help="Output JSON for skill files")
+@click.option("--no-download", is_flag=True, help="Skip downloading splat file")
+def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
+    """Direct mode: prompt -> image -> 3D in one command.
+
+    Executes the full pipeline:
+      Stage 1/3: Enhance prompt with taste profile
+      Stage 2/3: Generate image (saved immediately)
+      Stage 3/3: Convert to 3D splat via Marble
+
+    The image is saved BEFORE Marble conversion to prevent data loss
+    on Marble timeout.
+
+    Examples:
+        direct "cozy cabin interior"
+        direct "sunset beach" --provider gemini
+        direct "mountain vista" --json
+    """
+    prompt_text = " ".join(prompt)
+
+    project_dir = get_project_dir()
+    if not project_dir:
+        if json_output:
+            print(json.dumps({"status": "error", "message": "Not in a SplatWorld project. Run 'splatworld init' first."}))
+        else:
+            console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
+        sys.exit(1)
+
+    config = Config.load(project_dir)
+    manager = ProfileManager(project_dir.parent)
+    profile = manager.load_profile()
+
+    # Check for Marble API key
+    if not config.api_keys.marble:
+        if json_output:
+            print(json.dumps({"status": "error", "message": "Marble API key not configured"}))
+        else:
+            console.print("[red]Error: Marble API key required for direct mode.[/red]")
+            console.print("[dim]Set WORLDLABS_API_KEY environment variable.[/dim]")
+        sys.exit(1)
+
+    # Load training state to check for provider preference
+    training_state = _load_training_state(manager)
+
+    # Determine provider: explicit flag > training_state > default (nano)
+    if provider:
+        gen_name = provider
+    elif training_state and training_state.get("provider"):
+        gen_name = training_state["provider"]
+    else:
+        gen_name = "nano"  # IGEN-01: Nano is default provider
+
+    # Initialize ProviderManager
+    api_keys = {
+        "nano": config.api_keys.nano or config.api_keys.google,
+        "google": config.api_keys.google,
+    }
+    provider_manager = ProviderManager(
+        api_keys=api_keys,
+        initial_provider=gen_name,
+    )
+
+    # Initialize PromptAdapter for enhancement
+    adapter = PromptAdapter(api_key=config.api_keys.anthropic)
+
+    # Initialize MarbleClient
+    from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
+    marble = MarbleClient(api_key=config.api_keys.marble)
+
+    # Variables for tracking
+    image_number = None
+    flat_image_path = None
+    gen_id = None
+    enhanced_prompt = None
+    splat_path = None
+    result = None
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Starting direct generation...", total=None)
+
+            # Stage 1/3: Enhance prompt
+            progress.update(task, description="[cyan]Stage 1/3:[/cyan] Enhancing prompt...")
+            try:
+                variant = adapter.generate_variant(prompt_text, profile)
+                enhanced_prompt = variant.variant_prompt
+                reasoning = variant.reasoning
+                modifications = variant.modifications
+            except Exception as e:
+                # Fall back to basic enhancement if adapter fails
+                enhanced_prompt = enhance_prompt(prompt_text, profile)
+                reasoning = None
+                modifications = []
+
+            # Stage 2/3: Generate image
+            progress.update(task, description=f"[cyan]Stage 2/3:[/cyan] Generating image with {gen_name}...")
+            try:
+                image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
+                gen_name = gen_metadata["provider"]  # Track actual provider used
+            except ProviderFailureError as e:
+                if json_output:
+                    print(json.dumps({
+                        "status": "provider_failure",
+                        "provider": e.provider,
+                        "fallback_available": e.fallback_available,
+                        "error": str(e.original_error),
+                    }))
+                else:
+                    console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
+                    console.print(f"[yellow]Use --provider {e.fallback_available} to retry with fallback.[/yellow]")
+                provider_manager.close()
+                marble.close()
+                sys.exit(1)
+
+            # CRITICAL: Save image IMMEDIATELY before Marble (prevents data loss on Marble timeout)
+            image_number = manager.get_next_image_number()
+            flat_image_path = manager.get_flat_image_path(image_number)
+            manager.images_dir.mkdir(exist_ok=True)
+            with open(flat_image_path, "wb") as f:
+                f.write(image_bytes)
+
+            progress.update(task, description="[cyan]Stage 2/3:[/cyan] Image generated and saved!")
+
+            # Stage 3/3: Convert to 3D
+            progress.update(task, description="[cyan]Stage 3/3:[/cyan] Converting to 3D...")
+
+            def on_marble_progress(status: str, description: str):
+                progress.update(task, description=f"[cyan]Stage 3/3:[/cyan] {description or status}")
+
+            try:
+                result = marble.generate_and_wait(
+                    image_base64=base64.b64encode(image_bytes).decode(),
+                    mime_type="image/png",
+                    display_name=f"Image {image_number}",
+                    is_panorama=True,
+                    on_progress=on_marble_progress,
+                )
+            except (MarbleTimeoutError, MarbleConversionError) as e:
+                # Image was already saved - report partial success
+                gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                gen_timestamp = datetime.now()
+
+                # Save metadata even though Marble failed
+                manager.save_image_metadata(image_number, {
+                    "id": gen_id,
+                    "image_number": image_number,
+                    "prompt": prompt_text,
+                    "enhanced_prompt": enhanced_prompt,
+                    "modifications": modifications if modifications else [],
+                    "reasoning": reasoning if reasoning else "",
+                    "timestamp": gen_timestamp.isoformat(),
+                    "generator": gen_name,
+                    "mode": "direct",
+                    "marble_error": str(e),
+                })
+                manager.register_image(gen_id, image_number)
+
+                if json_output:
+                    print(json.dumps({
+                        "status": "partial_success",
+                        "message": f"Image saved but 3D conversion failed: {e}",
+                        "image_number": image_number,
+                        "image_path": str(flat_image_path),
+                        "splat_path": None,
+                        "viewer_url": None,
+                        "enhanced_prompt": enhanced_prompt,
+                        "provider": gen_name,
+                    }))
+                else:
+                    console.print(f"\n[yellow]3D conversion failed: {e}[/yellow]")
+                    console.print(f"[green]Image {image_number} saved:[/green] {flat_image_path}")
+                provider_manager.close()
+                marble.close()
+                sys.exit(1)
+
+            progress.update(task, description="[green]Complete!")
+
+        # All stages succeeded - save full metadata
+        gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+        gen_timestamp = datetime.now()
+
+        manager.save_image_metadata(image_number, {
+            "id": gen_id,
+            "image_number": image_number,
+            "prompt": prompt_text,
+            "enhanced_prompt": enhanced_prompt,
+            "modifications": modifications if modifications else [],
+            "reasoning": reasoning if reasoning else "",
+            "timestamp": gen_timestamp.isoformat(),
+            "generator": gen_name,
+            "mode": "direct",
+            "world_id": result.world_id,
+            "viewer_url": result.viewer_url,
+        })
+        manager.register_image(gen_id, image_number)
+
+        # Download splat file (respecting config and --no-download)
+        if result.splat_url and not no_download and config.defaults.download_splats:
+            manager.splats_dir.mkdir(exist_ok=True)
+            splat_path = manager.get_flat_splat_path(image_number)
+            try:
+                marble.download_file(result.splat_url, splat_path)
+                if not json_output:
+                    console.print(f"[green]Splat {image_number} saved:[/green] {splat_path}")
+            except Exception as e:
+                splat_path = None
+                if not json_output:
+                    error_msg = str(e)
+                    if "403" in error_msg or "Forbidden" in error_msg:
+                        console.print("[yellow]Splat download requires premium account.[/yellow]")
+                    else:
+                        console.print(f"[yellow]Splat download failed: {e}[/yellow]")
+
+        # Output results
+        if json_output:
+            usage_pct = gen_metadata.get("usage_percentage", 0)
+            print(json.dumps({
+                "status": "success",
+                "image_number": image_number,
+                "image_path": str(flat_image_path),
+                "splat_path": str(splat_path) if splat_path else None,
+                "viewer_url": result.viewer_url,
+                "enhanced_prompt": enhanced_prompt,
+                "provider": gen_name,
+                "usage_percentage": usage_pct,
+            }))
+        else:
+            # Human-readable output
+            console.print()
+            console.print(f"[dim]Original prompt:[/dim] {prompt_text}")
+            console.print(f"[dim]Enhanced:[/dim] {enhanced_prompt}")
+            if reasoning:
+                console.print(f"[dim]Reasoning: {reasoning}[/dim]")
+
+            console.print()
+            console.print(Panel.fit(
+                f"[bold green]Direct generation complete![/bold green]\n\n"
+                f"[cyan]Image {image_number}:[/cyan] {flat_image_path}\n"
+                f"[cyan]Viewer:[/cyan] {result.viewer_url}\n"
+                + (f"[cyan]Splat:[/cyan] {splat_path}\n" if splat_path else "")
+                + f"\n[dim]Provider: {gen_name}[/dim]",
+                title="Success",
+            ))
+
+    except Exception as e:
+        if json_output:
+            print(json.dumps({
+                "status": "error",
+                "message": str(e),
+                "image_number": image_number,
+                "image_path": str(flat_image_path) if flat_image_path else None,
+            }))
+        else:
+            console.print(f"\n[red]Direct generation failed:[/red] {e}")
+            if flat_image_path and Path(flat_image_path).exists():
+                console.print(f"[green]Image {image_number} was saved:[/green] {flat_image_path}")
+        sys.exit(1)
+    finally:
+        provider_manager.close()
+        marble.close()
+
+
+@main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be migrated without making changes")
 @click.option("--verify", "verify_only", is_flag=True, help="Only show migration status, don't migrate")
 def migrate(dry_run: bool, verify_only: bool):
