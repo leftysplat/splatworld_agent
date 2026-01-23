@@ -11,7 +11,7 @@ This command shows unrated images and collects ratings. Follow these steps.
 ## Step 1: List unrated images
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --list
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --list
 ```
 
 If all images are rated, stop here.
@@ -33,7 +33,7 @@ Use AskUserQuestion with:
 
 For each rating (not Skip or Done):
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
 ```
 
 ## Step 4: After review

@@ -9,7 +9,7 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 **Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli feedback "USER_RATING"
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli feedback "USER_RATING"
 ```
 
 Pass the user's rating directly. Examples:

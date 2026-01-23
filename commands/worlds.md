@@ -11,7 +11,7 @@ Lists all 3D worlds from your Marble/WorldLabs account via the API.
 ## Step 1: Run the command
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli worlds
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli worlds
 ```
 
 ## Step 2: Display results
@@ -20,7 +20,7 @@ Show the user the list of worlds with their viewer URLs.
 
 If they want to open a specific world:
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli worlds --open "WORLD_ID"
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli worlds --open "WORLD_ID"
 ```
 
 ## FORBIDDEN ACTIONS

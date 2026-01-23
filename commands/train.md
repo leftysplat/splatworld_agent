@@ -17,7 +17,7 @@ User will provide a prompt and optional count:
 ## Step 2: Generate ONE image
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli train "USER_PROMPT" --single
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli train "USER_PROMPT" --single
 ```
 
 This generates one image and shows the file path and generation ID.
@@ -39,7 +39,7 @@ Use AskUserQuestion with:
 
 If user gave a rating (not Skip or Done):
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
 ```
 
 ## Step 5: Loop or finish

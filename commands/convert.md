@@ -13,7 +13,7 @@ This command requires user input. Follow these steps exactly.
 Run this command to list what's available:
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert --list
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert --list
 ```
 
 ## Step 2: Ask user what to convert
@@ -29,13 +29,13 @@ Use AskUserQuestion with:
 
 **If user chose "Convert all loved":**
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert --all-loved
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert --all-loved
 ```
 
 **If user chose "Pick one":**
 Ask them to paste the generation ID, then run:
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
 ```
 
 ## Step 4: STOP
