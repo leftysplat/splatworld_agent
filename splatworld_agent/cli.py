@@ -3164,7 +3164,9 @@ def splats(ctx: click.Context, image_nums: tuple, open_num: int = None) -> None:
 @main.command("download-splats")
 @click.argument("image_nums", nargs=-1, type=int, required=False)
 @click.option("--all", "download_all", is_flag=True, help="Download all missing splats without confirmation")
-def download_splats(image_nums: tuple, download_all: bool):
+@click.option("--list", "list_only", is_flag=True, help="List missing splats without downloading")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON (use with --list)")
+def download_splats(image_nums: tuple, download_all: bool, list_only: bool, json_output: bool):
     """Download splat files that haven't been downloaded yet.
 
     Usage:
@@ -3217,9 +3219,32 @@ def download_splats(image_nums: tuple, download_all: bool):
                     filtered.append((gen, img_num))
         missing_splats = filtered
 
+    # Handle --list --json mode: output JSON array and exit
+    if list_only and json_output:
+        output = []
+        for gen, img_num in missing_splats:
+            output.append({
+                "generation_id": gen.id,
+                "image_number": img_num,
+                "prompt": gen.prompt,
+                "viewer_url": gen.viewer_url,
+            })
+        print(json.dumps(output, indent=2))
+        return
+
     if not missing_splats:
         console.print("[green]All splats are downloaded![/green]")
         console.print("[dim]No missing splat files found.[/dim]")
+        return
+
+    # Handle --list mode without JSON: show list and exit
+    if list_only:
+        console.print(f"\n[bold]Missing Splats ({len(missing_splats)})[/bold]\n")
+        for gen, img_num in missing_splats:
+            console.print(f"[cyan]Image {img_num or '?'}[/cyan]")
+            console.print(f"  Prompt: {gen.prompt[:50]}{'...' if len(gen.prompt) > 50 else ''}")
+            console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
+            console.print()
         return
 
     console.print(f"\n[bold]Missing Splats ({len(missing_splats)})[/bold]\n")
