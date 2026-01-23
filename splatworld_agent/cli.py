@@ -3208,6 +3208,131 @@ def prompt_history(limit: int, session: str, lineage: str, stats: bool, as_json:
     console.print("[dim]  --session <id>  Filter by training session[/dim]")
 
 
+@main.command("switch-provider")
+@click.argument("provider", type=click.Choice(["nano", "gemini"]))
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def switch_provider(provider: str, json_output: bool):
+    """Switch image generation provider mid-session (IGEN-04).
+
+    This updates the current training session to use a different provider
+    without losing your progress.
+
+    Examples:
+        splatworld switch-provider gemini
+        splatworld switch-provider nano --json
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        if json_output:
+            print(json.dumps({"success": False, "error": "Not in a SplatWorld project"}))
+        else:
+            console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        return
+
+    manager = ProfileManager(project_dir.parent)
+
+    # Load current training state if exists
+    training_state = _load_training_state(manager)
+    old_provider = None
+
+    if training_state:
+        # Update provider in training state
+        old_provider = training_state.get("provider", "nano")
+        training_state["provider"] = provider
+        training_state.setdefault("provider_switches", []).append({
+            "from": old_provider,
+            "to": provider,
+            "at": datetime.now().isoformat(),
+        })
+        _save_training_state(manager, training_state)
+
+    if json_output:
+        result = {
+            "success": True,
+            "provider": provider,
+            "previous_provider": old_provider,
+            "session_active": training_state is not None,
+        }
+        print(json.dumps(result))
+    else:
+        console.print(f"[green]Switched to {provider.upper()} provider[/green]")
+        if training_state:
+            console.print(f"[dim]Training session updated. Continue with /splatworld:train[/dim]")
+        else:
+            console.print(f"[dim]No active training session. New generations will use {provider.upper()}.[/dim]")
+
+
+@main.command("provider-status")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def provider_status(json_output: bool):
+    """Show current provider and credit usage.
+
+    Displays:
+    - Current provider (nano or gemini)
+    - Credits used this session
+    - Usage percentage (if limit set)
+    - Warning if at 75%+ usage
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        if json_output:
+            print(json.dumps({"error": "Not in a SplatWorld project"}))
+        else:
+            console.print("[red]Error: Not in a SplatWorld project.[/red]")
+        return
+
+    manager = ProfileManager(project_dir.parent)
+
+    training_state = _load_training_state(manager)
+
+    # Extract provider state from training state
+    provider = "nano"  # Default
+    credits_used = 0
+    credits_limit = None
+    generation_count = 0
+
+    if training_state:
+        provider = training_state.get("provider", "nano")
+        credits_used = training_state.get("credits_used", 0)
+        credits_limit = training_state.get("credits_limit")
+        generation_count = training_state.get("images_generated", 0)
+
+    # Calculate usage
+    usage_pct = 0.0
+    if credits_limit and credits_limit > 0:
+        usage_pct = (credits_used / credits_limit) * 100
+
+    should_warn = usage_pct >= 75.0
+
+    if json_output:
+        result = {
+            "provider": provider,
+            "credits_used": credits_used,
+            "credits_limit": credits_limit,
+            "generation_count": generation_count,
+            "usage_percentage": round(usage_pct, 1),
+            "should_warn": should_warn,
+        }
+        print(json.dumps(result))
+    else:
+        table = Table(show_header=False, box=None)
+        table.add_row("Provider", f"[bold]{provider.upper()}[/bold]")
+        table.add_row("Generations", str(generation_count))
+
+        if credits_limit:
+            usage_str = f"{credits_used}/{credits_limit} ({usage_pct:.1f}%)"
+            if should_warn:
+                usage_str = f"[yellow]{usage_str} - Consider switching to Gemini[/yellow]"
+            table.add_row("Credits", usage_str)
+        else:
+            table.add_row("Credits", f"{credits_used} (no limit set)")
+
+        console.print(Panel(table, title="Provider Status", border_style="blue"))
+
+        if should_warn:
+            console.print("\n[yellow]Warning: 75%+ credit usage. Consider /splatworld:switch-provider gemini[/yellow]")
+
+
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be migrated without making changes")
 @click.option("--verify", "verify_only", is_flag=True, help="Only show migration status, don't migrate")
