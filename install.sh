@@ -219,6 +219,64 @@ setup_claude() {
     echo -e "  ${GREEN}✓${RESET} Updated command paths to $INSTALL_DIR"
 }
 
+# Detect old .splatworld_agent/ folders
+detect_old_folders() {
+    local found=false
+
+    # Check current directory
+    if [ -d "$ORIGINAL_DIR/.splatworld_agent" ]; then
+        echo -e "\n  ${YELLOW}Found old SplatWorld data:${RESET} $ORIGINAL_DIR/.splatworld_agent"
+        found=true
+    fi
+
+    # Check home directory (rare, but possible)
+    if [ -d "$HOME/.splatworld_agent" ]; then
+        echo -e "\n  ${YELLOW}Found old SplatWorld data:${RESET} $HOME/.splatworld_agent"
+        found=true
+    fi
+
+    if [ "$found" = true ]; then
+        return 0  # Found old folders
+    else
+        return 1  # No old folders
+    fi
+}
+
+# Prompt for migration
+prompt_migration() {
+    echo ""
+    echo -e "  ${YELLOW}Old SplatWorld data detected!${RESET}"
+    echo -e "  Your taste profile and feedback history can be migrated."
+    echo ""
+
+    if [ "$AUTO_YES" = true ]; then
+        echo -e "  ${DIM}Non-interactive mode: Skipping migration${RESET}"
+        echo -e "  ${DIM}Run '/splatworld:migrate-data' after install to migrate${RESET}"
+        return
+    fi
+
+    # Interactive prompt
+    while true; do
+        read -p "  Migrate old data now? [y/n]: " response
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss])
+                echo -e "  ${DIM}Running migration...${RESET}"
+                # Run the CLI migration command
+                cd "$ORIGINAL_DIR"
+                PYTHONPATH="$INSTALL_DIR" python3 -m splatworld_agent.cli migrate-data --yes
+                break
+                ;;
+            [Nn]|[Nn][Oo])
+                echo -e "  ${DIM}Skipped. Run '/splatworld:migrate-data' later to migrate.${RESET}"
+                break
+                ;;
+            *)
+                echo "  Please answer yes or no."
+                ;;
+        esac
+    done
+}
+
 # Print completion message
 print_done() {
     # Return to original directory if we cd'd into the repo
@@ -268,6 +326,12 @@ main() {
     install_repo
     install_python
     setup_claude
+
+    # Check for old data to migrate
+    if detect_old_folders; then
+        prompt_migration
+    fi
+
     print_done
 }
 
