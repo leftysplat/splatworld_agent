@@ -1,7 +1,7 @@
 ---
 name: init
 description: Initialize .splatworld/ in current project directory
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*)
 ---
 
 # Initialize SplatWorld Agent
@@ -19,7 +19,8 @@ Ask the user to paste their API keys one at a time:
 ## Step 2: Save API keys
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli setup-keys --anthropic "ANTHROPIC_KEY" --google "GOOGLE_KEY" --worldlabs "WORLDLABS_KEY"
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli setup-keys --anthropic "ANTHROPIC_KEY" --google "GOOGLE_KEY" --worldlabs "WORLDLABS_KEY"
 ```
 
 Replace placeholders with actual keys.
@@ -27,7 +28,8 @@ Replace placeholders with actual keys.
 ## Step 3: Initialize project
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli init
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli init
 ```
 
 ## FORBIDDEN ACTIONS

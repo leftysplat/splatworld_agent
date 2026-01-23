@@ -1,7 +1,7 @@
 ---
 name: download-splats
 description: Download splat files that haven't been downloaded yet
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*)
 ---
 
 <objective>
@@ -13,7 +13,8 @@ Download splat files from WorldLabs for conversions that don't have local splat 
 First show what splats are missing:
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}"
 python3 -m splatworld_agent.cli download-splats
 ```
 
@@ -22,6 +23,8 @@ If user confirms, the command will download the missing splats.
 To download all without confirmation:
 
 ```bash
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}"
 python3 -m splatworld_agent.cli download-splats --all
 ```
 

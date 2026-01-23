@@ -1,7 +1,7 @@
 ---
 name: generate
 description: Generate a single image + splat from prompt
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
 # CRITICAL: Just run the CLI
@@ -9,12 +9,13 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 **Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli generate "USER_PROMPT" [USER_FLAGS]
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli generate "USER_PROMPT" [USER_FLAGS]
 ```
 
 Pass the user's arguments directly. Examples:
 - User says `/generate "modern kitchen"` -> run `... generate "modern kitchen"`
-- User says `/generate "beach" --no-splat` -> run `... generate "beach" --no-splat`
+- User says `/generate "beach" --no-splat` -> run `... generate "beach" --no-splat"`
 
 The default generator is Nano Banana Pro (use `--generator gemini` to use Gemini instead).
 
@@ -31,7 +32,8 @@ If the generate command fails with a provider error:
 
 2. If user chooses "yes":
    ```bash
-   export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli generate "PROMPT" --generator gemini
+   PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+   export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli generate "PROMPT" --generator gemini
    ```
 
 3. If user chooses "no":

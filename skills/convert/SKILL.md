@@ -1,7 +1,7 @@
 ---
 name: convert
 description: Convert loved images to 3D splats
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
 # Convert Command
@@ -13,7 +13,8 @@ This command requires user input. Follow these steps exactly.
 Run this command to list what's available:
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert --list
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli convert --list
 ```
 
 ## Step 2: Ask user what to convert
@@ -29,13 +30,15 @@ Use AskUserQuestion with:
 
 **If user chose "Convert all loved":**
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert --all-loved
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli convert --all-loved
 ```
 
 **If user chose "Pick one":**
 Ask them to paste the generation ID, then run:
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli convert -g "GENERATION_ID"
 ```
 
 ## Step 4: STOP

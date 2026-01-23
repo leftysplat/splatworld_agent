@@ -1,7 +1,7 @@
 ---
 name: direct
 description: Generate complete 3D world from single prompt (enhance -> generate -> convert)
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
 # Direct Command
@@ -14,7 +14,8 @@ Generate a complete 3D world from a single prompt. Executes the full pipeline:
 ## Step 1: Run direct command
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli direct "USER_PROMPT" --json
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli direct "USER_PROMPT" --json
 ```
 
 Parse the JSON output to determine result.
@@ -37,7 +38,8 @@ If JSON output contains `"status": "provider_failure"`:
 
 2. If user chooses "yes":
    ```bash
-   export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli direct "USER_PROMPT" --provider gemini --json
+   PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+   export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli direct "USER_PROMPT" --provider gemini --json
    ```
 
 3. If user chooses "no":
