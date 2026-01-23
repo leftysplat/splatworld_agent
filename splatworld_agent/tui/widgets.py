@@ -44,6 +44,8 @@ class StageProgress(Static):
         self._stages: dict[int, dict] = {}
         self._current_stage = 0
         self._elapsed_timer = None
+        self._overall_start = None
+        self._completed_stages = 0
 
         # Initialize all stages as waiting
         for i in range(1, total_stages + 1):
@@ -76,8 +78,14 @@ class StageProgress(Static):
         if status == "running":
             stage_data["start_time"] = perf_counter()
             self._current_stage = stage
+            # Track overall start on first stage
+            if self._overall_start is None:
+                self._overall_start = perf_counter()
         elif status in ("complete", "error"):
             stage_data["end_time"] = perf_counter()
+            # Track completion for ETA calculation
+            if status == "complete":
+                self._completed_stages = stage
 
         self.refresh()
 
@@ -89,6 +97,35 @@ class StageProgress(Static):
     def _refresh_display(self):
         """Called every second to update elapsed times."""
         self.refresh()
+
+    def _calculate_eta(self) -> str:
+        """Calculate estimated time remaining using linear extrapolation.
+
+        Formula: remaining = (elapsed / completed_fraction) - elapsed
+
+        Returns empty string until at least one stage completes to avoid
+        division by zero and misleading early estimates.
+        """
+        # Guard: Don't calculate until we have completion data
+        if self._overall_start is None or self._completed_stages == 0:
+            return ""
+
+        elapsed = perf_counter() - self._overall_start
+        progress_fraction = self._completed_stages / self.total_stages
+
+        # Linear extrapolation: total_time = elapsed / fraction_done
+        total_estimated = elapsed / progress_fraction
+        remaining = total_estimated - elapsed
+
+        # Guard: Don't show negative or very small remaining time
+        if remaining < 1:
+            return ""
+
+        # Format as minutes:seconds
+        mins, secs = divmod(int(remaining), 60)
+        if mins > 0:
+            return f"ETA: {mins}m {secs}s"
+        return f"ETA: {secs}s"
 
     def render(self) -> str:
         """Render all stages with status and elapsed time."""
@@ -111,6 +148,11 @@ class StageProgress(Static):
             line += elapsed
 
             lines.append(line)
+
+        # Add ETA if available (only after first stage completes)
+        eta = self._calculate_eta()
+        if eta:
+            lines.append(f"[dim]{eta}[/dim]")
 
         return "\n".join(lines)
 
