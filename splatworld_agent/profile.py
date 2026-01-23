@@ -874,3 +874,69 @@ class ProfileManager:
         # Look up in registry
         registry = self.get_image_registry()
         return registry.get(ref)
+
+    # Flat file structure methods (FILE-02 Expand phase)
+
+    @property
+    def image_metadata_dir(self) -> Path:
+        """Directory for per-image metadata files (N-metadata.json)."""
+        return self.splatworld_dir / "image_metadata"
+
+    def get_flat_image_path(self, image_number: int) -> Path:
+        """Get the flat file path for an image number.
+
+        Args:
+            image_number: The sequential image number
+
+        Returns:
+            Path to generated_images/N.png
+        """
+        return self.images_dir / f"{image_number}.png"
+
+    def get_flat_splat_path(self, image_number: int) -> Path:
+        """Get the flat file path for a splat number.
+
+        Args:
+            image_number: The sequential image number
+
+        Returns:
+            Path to downloaded_splats/N.spz
+        """
+        return self.splats_dir / f"{image_number}.spz"
+
+    def save_image_metadata(self, image_number: int, metadata: dict) -> Path:
+        """Save metadata for a flat-numbered image.
+
+        Args:
+            image_number: The sequential image number
+            metadata: Dict with generation metadata (prompt, generator, etc.)
+
+        Returns:
+            Path to the saved metadata file
+        """
+        self.image_metadata_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = self.image_metadata_dir / f"{image_number}-metadata.json"
+
+        # Atomic write
+        temp_path = metadata_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        temp_path.replace(metadata_path)
+
+        return metadata_path
+
+    def load_image_metadata(self, image_number: int) -> Optional[dict]:
+        """Load metadata for a flat-numbered image.
+
+        Args:
+            image_number: The sequential image number
+
+        Returns:
+            Dict with generation metadata, or None if not found
+        """
+        metadata_path = self.image_metadata_dir / f"{image_number}-metadata.json"
+        if not metadata_path.exists():
+            return None
+
+        with open(metadata_path) as f:
+            return json.load(f)
