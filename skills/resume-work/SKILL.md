@@ -1,7 +1,7 @@
 ---
 name: resume-work
 description: Resume work from previous session
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*)
 ---
 
 # CRITICAL: Just run the CLI
@@ -9,7 +9,8 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 **Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli resume-work
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli resume-work
 ```
 
 ## FORBIDDEN ACTIONS

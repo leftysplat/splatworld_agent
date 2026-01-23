@@ -1,7 +1,7 @@
 ---
 name: prompt-history
 description: View prompt variant history from training sessions
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*)
 ---
 
 <objective>
@@ -12,26 +12,26 @@ View all prompt variants tried during training, their ratings, and lineage.
 
 View recent prompt history:
 ```bash
-export PYTHONPATH=~/.claude/splatworld
-python3 -m splatworld_agent.cli prompt-history
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli prompt-history
 ```
 
 View statistics:
 ```bash
-export PYTHONPATH=~/.claude/splatworld
-python3 -m splatworld_agent.cli prompt-history --stats
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli prompt-history --stats
 ```
 
 View lineage for a specific variant:
 ```bash
-export PYTHONPATH=~/.claude/splatworld
-python3 -m splatworld_agent.cli prompt-history --lineage <variant-id>
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli prompt-history --lineage <variant-id>
 ```
 
 Filter by training session:
 ```bash
-export PYTHONPATH=~/.claude/splatworld
-python3 -m splatworld_agent.cli prompt-history --session <session-id>
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli prompt-history --session <session-id>
 ```
 
 ## Options

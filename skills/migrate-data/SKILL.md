@@ -1,7 +1,7 @@
 ---
 name: migrate-data
 description: Migrate data from old .splatworld_agent/ folder
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*)
 ---
 
 # CRITICAL: Just run the CLI
@@ -9,19 +9,22 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 **Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli migrate-data
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli migrate-data
 ```
 
 ## Options
 
 If user specifies a source directory:
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli migrate-data --from-dir "/path/to/old/project"
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli migrate-data --from-dir "/path/to/old/project"
 ```
 
 For dry-run (preview only):
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli migrate-data --dry-run
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli migrate-data --dry-run
 ```
 
 ## FORBIDDEN ACTIONS

@@ -1,7 +1,7 @@
 ---
 name: train
 description: Guided training mode to calibrate your taste profile (20 images)
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
 # Train Command
@@ -17,7 +17,8 @@ User will provide a prompt and optional count:
 ## Step 2: Generate ONE image
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli train "USER_PROMPT" --single --json --no-rate
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli train "USER_PROMPT" --single --json --no-rate
 ```
 
 This outputs JSON with image details. Parse the JSON response.
@@ -35,7 +36,8 @@ If the command fails with a provider error message containing "Provider nano fai
 
 2. If user chooses "yes":
    ```bash
-   export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli switch-provider gemini
+   PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+   export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli switch-provider gemini
    ```
    Then retry the generation.
 
@@ -55,7 +57,8 @@ If at 75%+, use AskUserQuestion:
 
 If user chooses "switch":
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli switch-provider gemini
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli switch-provider gemini
 ```
 
 ## Step 3: Ask for rating
@@ -75,7 +78,8 @@ Use AskUserQuestion with:
 
 If user gave a rating (not Skip or Done):
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
 ```
 
 ## Step 5: Loop or finish
@@ -96,7 +100,8 @@ Tell user:
 
 If user asks to switch providers during training:
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli switch-provider PROVIDER
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli switch-provider PROVIDER
 ```
 
 Then continue training with the new provider.

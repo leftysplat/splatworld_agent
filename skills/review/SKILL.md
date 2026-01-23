@@ -1,7 +1,7 @@
 ---
 name: review
 description: Interactively review and rate generated images
-allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}*python3*splatworld_agent.cli*), AskUserQuestion
 ---
 
 # Review Command
@@ -11,7 +11,8 @@ This command shows unrated images and collects ratings. Follow these steps.
 ## Step 1: List unrated images
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --list
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli review --list
 ```
 
 If all images are rated, stop here.
@@ -33,7 +34,8 @@ Use AskUserQuestion with:
 
 For each rating (not Skip or Done):
 ```bash
-export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
+PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli review --rate "RATING" -g "GENERATION_ID"
 ```
 
 ## Step 4: After review
