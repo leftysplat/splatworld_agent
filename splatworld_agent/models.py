@@ -289,6 +289,9 @@ class TasteProfile:
     stats: ProfileStats = field(default_factory=ProfileStats)
     calibration: CalibrationStatus = field(default_factory=CalibrationStatus)
 
+    # Sequential image numbering (FILE-02)
+    next_image_number: int = 1
+
     @property
     def is_calibrated(self) -> bool:
         """Whether the profile has been sufficiently trained."""
@@ -316,6 +319,7 @@ class TasteProfile:
             "anti_exemplars": [e.to_dict() for e in self.anti_exemplars],
             "stats": self.stats.to_dict(),
             "calibration": self.calibration.to_dict(),
+            "next_image_number": self.next_image_number,
         }
 
     @classmethod
@@ -332,6 +336,7 @@ class TasteProfile:
             anti_exemplars=[Exemplar.from_dict(e) for e in data.get("anti_exemplars", [])],
             stats=ProfileStats.from_dict(data.get("stats", {})),
             calibration=CalibrationStatus.from_dict(data.get("calibration", {})),
+            next_image_number=data.get("next_image_number", 1),
         )
 
     def save(self, path: Path) -> None:
