@@ -6,8 +6,11 @@ context managers for inline terminal display.
 CRITICAL: Do NOT import Rich console or use console.print() in TUI code.
 Rich and Textual cannot mix - terminal state will be corrupted.
 """
+import threading
+
 from textual.app import App
-from textual.widgets import Static
+from textual.binding import Binding
+from textual.widgets import Static, Footer
 from textual.containers import Vertical
 from textual.worker import get_current_worker
 from textual import work
@@ -30,10 +33,19 @@ class GenerateTUI(App[GenerateResult]):
     # Inline mode settings - display under prompt, not fullscreen
     INLINE_PADDING = 0  # No blank line above app
 
+    BINDINGS = [
+        # Cancel bindings - priority=True to override Textual's Ctrl+C text copy
+        Binding("ctrl+c", "cancel", "Cancel", priority=True, show=True),
+        Binding("q", "cancel", "Quit", priority=True, show=True),
+        # Pause bindings
+        Binding("space", "toggle_pause", "Pause/Resume", show=True),
+        Binding("p", "toggle_pause", "Pause", show=False),  # Alternate, don't show duplicate
+    ]
+
     CSS = """
     Screen {
         height: auto;
-        max-height: 20;
+        max-height: 22;
     }
 
     #resource-panel {
@@ -56,6 +68,12 @@ class GenerateTUI(App[GenerateResult]):
         height: 1;
         width: 100%;
         color: $text-muted;
+    }
+
+    #pause-indicator {
+        height: 1;
+        width: 100%;
+        color: yellow;
     }
 
     #output-log {
@@ -92,6 +110,9 @@ class GenerateTUI(App[GenerateResult]):
         self.provider = provider
         self.no_download = no_download
         self._api_call_count = 0
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # Start in "running" state (not paused)
+        self._paused = False
 
     def compose(self):
         """Create child widgets."""
@@ -99,11 +120,50 @@ class GenerateTUI(App[GenerateResult]):
         with Vertical(id="progress-container"):
             yield StageProgress(total_stages=3, id="progress")
             yield Static("Starting direct generation...", id="current-op")
+            yield Static("", id="pause-indicator")
         yield OutputLog(id="output-log")
+        yield Footer()  # Automatically displays BINDINGS
+
+    def action_cancel(self) -> None:
+        """Cancel operation (Ctrl+C or q)."""
+        self.workers.cancel_all()
+        # Worker checks is_cancelled and exits with partial state preserved
+
+    def action_toggle_pause(self) -> None:
+        """Pause or resume operation (Space or p)."""
+        indicator = self.query_one("#pause-indicator", Static)
+
+        if self._paused:
+            # Resume
+            self._pause_event.set()
+            self._paused = False
+            indicator.update("")
+        else:
+            # Pause
+            self._pause_event.clear()
+            self._paused = True
+            indicator.update("[yellow]PAUSED - Press Space to resume[/yellow]")
 
     def on_mount(self):
         """Start the pipeline when app mounts."""
         self.run_pipeline()
+
+    def _wait_if_paused_or_cancelled(self, worker) -> bool:
+        """Wait for resume if paused, check for cancellation.
+
+        Uses timeout=0.5 to check cancellation every 500ms even while paused.
+        This prevents hanging on cancel during pause state.
+
+        Returns:
+            True if should continue, False if cancelled
+        """
+        # Check cancellation with timeout loop to allow cancel during pause
+        while not self._pause_event.wait(timeout=0.5):
+            if worker.is_cancelled:
+                return False  # Cancelled while paused
+
+        # Not paused (or just resumed), check cancellation one more time
+        return not worker.is_cancelled
 
     @work(thread=True, exclusive=True)
     def run_pipeline(self):
@@ -171,8 +231,8 @@ class GenerateTUI(App[GenerateResult]):
 
             self.call_from_thread(self._update_stage, 1, "complete", "Prompt enhanced")
 
-            # Check cancellation before expensive operation
-            if worker.is_cancelled:
+            # Checkpoint: check cancel and pause before image generation
+            if not self._wait_if_paused_or_cancelled(worker):
                 self._cleanup_and_exit(provider_manager, marble, GenerateResult(
                     success=False, error="Cancelled by user"
                 ))
@@ -216,14 +276,15 @@ class GenerateTUI(App[GenerateResult]):
 
             self.call_from_thread(self._update_stage, 2, "complete", "Image saved")
 
-            # Check cancellation - image is saved, can exit gracefully
-            if worker.is_cancelled:
+            # Checkpoint: check cancel and pause before Marble conversion
+            # Image is saved - exit gracefully with partial result
+            if not self._wait_if_paused_or_cancelled(worker):
                 self._cleanup_and_exit(provider_manager, marble, GenerateResult(
                     success=False,
                     partial=True,
                     image_number=image_number,
                     image_path=str(flat_image_path),
-                    error="Cancelled before 3D conversion"
+                    error="Cancelled by user"
                 ))
                 return
 
