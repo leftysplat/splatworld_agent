@@ -56,3 +56,9 @@ If the generate command fails with a provider error:
 4. The CLI handles EVERYTHING else
 
 The CLI handles prompt enhancement, generation, and output. You do not control this.
+
+## TASK COMPLETION
+
+**IMPORTANT:** After the CLI finishes and displays its output, your task is COMPLETE.
+
+Do NOT continue processing, waiting, or asking follow-up questions. The generation is done when the CLI exits. Stop immediately after the CLI output.

@@ -15,10 +15,10 @@ Generate a complete 3D world from a single prompt. Executes the full pipeline:
 
 ```bash
 PLUGIN_ROOT=$("${CLAUDE_PLUGIN_ROOT}/.resolver.sh" 2>/dev/null || echo "${HOME}/.claude/splatworld")
-export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli direct "USER_PROMPT" --json
+export PYTHONPATH="${PLUGIN_ROOT}" && python3 -m splatworld_agent.cli direct "USER_PROMPT" --json --no-tui
 ```
 
-Parse the JSON output to determine result.
+Parse the JSON output to determine result. The `--no-tui` flag disables the Textual TUI which doesn't render properly in Claude's environment.
 
 ### Optional flags
 
@@ -87,6 +87,17 @@ Files saved:
 ## CORRECT BEHAVIOR
 
 1. Parse user's prompt exactly as given
-2. Run the direct CLI command with --json
+2. Run the direct CLI command with --json --no-tui
 3. If provider fails, ask user with AskUserQuestion before trying alternate
 4. Report results clearly with viewer URL prominent
+
+## TASK COMPLETION
+
+**IMPORTANT:** After reporting success (showing the viewer URL and file paths), your task is COMPLETE.
+
+Do NOT continue processing, waiting, or asking follow-up questions. The generation is done when you've displayed:
+- The viewer URL
+- The enhanced prompt explanation
+- The saved file paths
+
+Stop immediately after showing these results. The user can run another command if they want more generations.
