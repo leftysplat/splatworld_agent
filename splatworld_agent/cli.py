@@ -2155,90 +2155,16 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
                 print(json.dumps(result))
                 return  # Exit without interactive loop
 
-            # Get rating (skip if --no-rate flag is set)
-            rating = None
-            if no_rate:
-                # Non-interactive mode: skip rating, user can rate later with review
-                console.print(f"[dim]Generated: Image {image_number} ({gen_id})[/dim]")
-                console.print(f"[dim]Rate later with: splatworld review --rate RATING {image_number}[/dim]")
-            else:
-                # Interactive mode: prompt for rating
-                while True:
-                    try:
-                        rating_input = input("\nRating (++/+/-/--/s/cancel) or 'new: prompt': ").strip()
-                    except (KeyboardInterrupt, EOFError):
-                        cancelled = True
-                        break
+            # Non-interactive mode only: require --no-rate flag
+            if not no_rate:
+                console.print("[red]Error: train command requires --no-rate flag for non-interactive use.[/red]")
+                console.print("[dim]Use: splatworld train \"prompt\" --no-rate[/dim]")
+                console.print("[dim]Or for Claude Code skill files: /splatworld:train[/dim]")
+                sys.exit(1)
 
-                    # Check for cancel
-                    if rating_input.lower() == "cancel":
-                        cancelled = True
-                        break
-
-                    # Check for prompt change (ADAPT-06)
-                    if rating_input.lower().startswith("new:"):
-                        new_prompt = rating_input[4:].strip()
-                        if new_prompt:
-                            prompt_text = new_prompt
-                            console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
-                            images_since_prompt_check = 0  # Reset counter
-                            # Update training state with new prompt
-                            _save_training_state(manager, {
-                                "session_id": session_id,
-                                "base_prompt": prompt_text,
-                                "images_generated": images_generated,
-                                "last_variant_id": variant_id,
-                                "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
-                                "status": "active",
-                            })
-                            # Clear recent feedback context since we're exploring new territory
-                            recent_feedback = []
-                        else:
-                            console.print("[yellow]Please provide a prompt after 'new:'[/yellow]")
-                        continue
-
-                    # Check for skip - exits training without forcing more ratings
-                    if rating_input.lower() == "s":
-                        console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld:review[/dim]")
-                        cancelled = True
-                        break
-
-                    # Parse rating
-                    if rating_input in ("++", "+", "-", "--"):
-                        rating = rating_input
-
-                        # Save feedback
-                        fb = Feedback(
-                            generation_id=gen_id,
-                            timestamp=datetime.now(),
-                            rating=rating,
-                        )
-                        manager.add_or_replace_feedback(fb)
-
-                    # Update prompt history with rating
-                    manager.update_prompt_variant_rating(variant_id, rating)
-
-                    rating_display = {
-                        "++": "[green]Love![/green]",
-                        "+": "[green]Good[/green]",
-                        "-": "[yellow]Meh[/yellow]",
-                        "--": "[red]Hate[/red]"
-                    }
-                    console.print(rating_display[rating])
-
-                    # Update recent feedback for next adaptation (ADAPT-03)
-                    gen = manager.get_generation(gen_id)
-                    if gen:
-                        recent_feedback.append((gen, fb))
-                        # Keep only last 10
-                        recent_feedback = recent_feedback[-10:]
-
-                    break
-                else:
-                    console.print("[red]Invalid. Use ++, +, -, --, s, cancel, or 'new: prompt'[/red]")
-
-            if cancelled:
-                break
+            # Non-interactive mode: skip rating, user can rate later with review
+            console.print(f"[dim]Generated: Image {image_number} ({gen_id})[/dim]")
+            console.print(f"[dim]Rate later with: splatworld rate {image_number} RATING[/dim]")
 
             # Update training state
             last_variant_id = variant_id
@@ -2250,31 +2176,6 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
                 "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
                 "status": "active",
             })
-
-            # ADAPT-05: Suggest prompt change every 5 images (interactive mode only)
-            if not no_rate and images_since_prompt_check >= PROMPT_CHECK_INTERVAL:
-                console.print(f"\n[cyan]You've generated {images_since_prompt_check} images with this prompt.[/cyan]")
-                console.print("Continue with same prompt, or type 'new: your new prompt' to change.")
-
-                try:
-                    change_input = input("Press Enter to continue, or enter new prompt: ").strip()
-                except (KeyboardInterrupt, EOFError):
-                    cancelled = True
-                    break
-
-                if change_input.lower().startswith("new:"):
-                    new_prompt = change_input[4:].strip()
-                    if new_prompt:
-                        prompt_text = new_prompt
-                        console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
-                        recent_feedback = []  # Clear context for new prompt
-                elif change_input and not change_input.lower().startswith("new:"):
-                    # Treat bare input as new prompt
-                    prompt_text = change_input
-                    console.print(f"[cyan]Base prompt changed to:[/cyan] {prompt_text}")
-                    recent_feedback = []
-
-                images_since_prompt_check = 0
 
             # Learn periodically (every 5 ratings)
             profile = manager.load_profile()
