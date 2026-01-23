@@ -3,9 +3,17 @@
 # SplatWorld Agent Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld/main/install.sh | bash
-#   OR
-#   git clone ... && cd splatworld && ./install.sh
+#   Local install (default, in current directory):
+#     curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld/main/install.sh | bash
+#     OR
+#     ./install.sh
+#
+#   Global install (in ~/.claude/splatworld):
+#     ./install.sh --global
+#
+# Options:
+#   -y, --yes     Skip confirmation prompts
+#   --global      Install globally to ~/.claude/splatworld (default: local)
 #
 
 set -e
@@ -15,11 +23,14 @@ ORIGINAL_DIR="$(pwd)"
 
 # Parse arguments
 AUTO_YES=false
+INSTALL_MODE="local"  # Default to LOCAL (per INST-01 requirement)
 for arg in "$@"; do
     case $arg in
         -y|--yes)
             AUTO_YES=true
-            shift
+            ;;
+        --global)
+            INSTALL_MODE="global"
             ;;
     esac
 done
@@ -36,8 +47,9 @@ YELLOW='\033[0;33m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-# Default install location (inside ~/.claude like GSD)
-DEFAULT_INSTALL_DIR="$HOME/.claude/splatworld"
+# Install locations
+GLOBAL_INSTALL_DIR="$HOME/.claude/splatworld"
+LOCAL_INSTALL_DIR="$(pwd)/.splatworld"
 CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 
 echo ""
@@ -90,8 +102,13 @@ detect_mode() {
 
 # Prompt for install location
 prompt_location() {
-    # Always install to ~/.claude/splatworld for global access
-    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    if [ "$INSTALL_MODE" = "global" ]; then
+        INSTALL_DIR="$GLOBAL_INSTALL_DIR"
+        echo -e "  ${DIM}Mode: Global (--global flag)${RESET}"
+    else
+        INSTALL_DIR="$LOCAL_INSTALL_DIR"
+        echo -e "  ${DIM}Mode: Local (default)${RESET}"
+    fi
     echo -e "  ${DIM}Installing to: $INSTALL_DIR${RESET}"
 }
 
@@ -212,17 +229,32 @@ print_done() {
     echo ""
     echo -e "  ${GREEN}Installation complete!${RESET}"
     echo ""
-    echo -e "  ${YELLOW}Installed to:${RESET} ~/.claude/splatworld"
-    echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld"
-    echo -e "  ${YELLOW}Available from:${RESET} Any project directory"
-    echo ""
-    echo -e "  ${YELLOW}Next steps:${RESET}"
-    echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
-    echo -e "  2. Run ${CYAN}/splatworld:help${RESET} to see available commands"
-    echo -e "  3. Run ${CYAN}/splatworld:init${RESET} in any project to start"
-    echo ""
-    echo -e "  ${YELLOW}To update later:${RESET}"
-    echo -e "  Run ${CYAN}/splatworld:update${RESET} from anywhere"
+
+    if [ "$INSTALL_MODE" = "global" ]; then
+        echo -e "  ${YELLOW}Installed to:${RESET} ~/.claude/splatworld"
+        echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld"
+        echo -e "  ${YELLOW}Available from:${RESET} Any project directory"
+        echo ""
+        echo -e "  ${YELLOW}Next steps:${RESET}"
+        echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
+        echo -e "  2. Run ${CYAN}/splatworld:help${RESET} to see available commands"
+        echo -e "  3. Run ${CYAN}/splatworld:init${RESET} in any project to start"
+        echo ""
+        echo -e "  ${YELLOW}To update later:${RESET}"
+        echo -e "  Run ${CYAN}/splatworld:update${RESET} from anywhere"
+    else
+        echo -e "  ${YELLOW}Installed to:${RESET} $INSTALL_DIR"
+        echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld"
+        echo -e "  ${YELLOW}Available from:${RESET} This project directory"
+        echo ""
+        echo -e "  ${YELLOW}Next steps:${RESET}"
+        echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
+        echo -e "  2. Run ${CYAN}/splatworld:help${RESET} to see available commands"
+        echo -e "  3. Run ${CYAN}/splatworld:train${RESET} to start training"
+        echo ""
+        echo -e "  ${YELLOW}To install globally (available in all projects):${RESET}"
+        echo -e "  Run ${CYAN}./install.sh --global${RESET}"
+    fi
     echo ""
 }
 
@@ -231,7 +263,7 @@ main() {
     check_requirements
     detect_mode
 
-    # Always install to ~/.claude/splatworld
+    # Determine install location based on mode
     prompt_location
     install_repo
     install_python
