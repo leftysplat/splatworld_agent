@@ -1008,6 +1008,25 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
     # Non-interactive mode: List unrated images
     if list_only:
         unrated_gens = manager.get_all_unrated_generations()
+
+        # JSON output mode: output structured data (for skill file parsing)
+        if json_output:
+            if not unrated_gens:
+                print(json.dumps([]))
+                return
+            items = []
+            for gen, batch_ctx in unrated_gens[:limit]:
+                image_number = manager.get_image_number_for_generation(gen.id)
+                items.append({
+                    "generation_id": gen.id,
+                    "image_number": image_number,
+                    "file_path": str(manager.get_flat_image_path(image_number)) if image_number else gen.source_image_path,
+                    "prompt": gen.prompt,
+                    "created_at": gen.created_at.isoformat() if gen.created_at else None,
+                })
+            print(json.dumps(items))
+            return
+
         if not unrated_gens:
             console.print("[green]All images have been rated![/green]")
             return
