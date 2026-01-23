@@ -106,7 +106,7 @@ class ProfileManager:
         """Load the taste profile."""
         if not self.profile_path.exists():
             raise FileNotFoundError(
-                f"Profile not found. Run 'splatworld-agent init' first."
+                f"Profile not found. Run 'splatworld init' first."
             )
         return TasteProfile.load(self.profile_path)
 

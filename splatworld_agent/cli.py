@@ -169,7 +169,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
     project_dir = get_project_dir()
     if not project_dir:
-        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
@@ -190,7 +190,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
         console.print(Panel.fit(
             f"[yellow]Profile not calibrated[/yellow]\n\n"
             f"{profile.training_progress}\n\n"
-            f"For best results, run [cyan]splatworld-agent train \"{prompt_text}\"[/cyan]\n"
+            f"For best results, run [cyan]splatworld train \"{prompt_text}\"[/cyan]\n"
             f"to calibrate your taste profile first (20 rated images).\n\n"
             f"[dim]Continuing with uncalibrated profile...[/dim]",
             title="Training Recommended",
@@ -330,7 +330,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
         console.print(f"\n[bold green]Generation complete![/bold green]")
         console.print(f"[dim]ID: {gen_id}[/dim]")
-        console.print("\nUse [cyan]splatworld-agent feedback ++[/cyan] to love it, or [cyan]-- [/cyan] to hate it.")
+        console.print("\nUse [cyan]splatworld feedback ++[/cyan] to love it, or [cyan]-- [/cyan] to hate it.")
 
     except Exception as e:
         console.print(f"\n[red]Generation failed:[/red] {e}")
@@ -396,7 +396,7 @@ def feedback(feedback_text: tuple, generation: str):
     config = Config.load()
     unprocessed = len(manager.get_unprocessed_feedback())
     if unprocessed >= config.defaults.auto_learn_threshold:
-        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn' to update your taste profile.[/cyan]")
+        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld learn' to update your taste profile.[/cyan]")
 
 
 @main.command()
@@ -426,7 +426,7 @@ def rate(image_nums: tuple, rating: str):
     # Get current batch info for validation
     if not manager.current_session_path.exists():
         console.print("[red]No batch context found.[/red]")
-        console.print("[yellow]Generate a batch first: splatworld-agent batch \"your prompt\"[/yellow]")
+        console.print("[yellow]Generate a batch first: splatworld batch \"your prompt\"[/yellow]")
         sys.exit(1)
 
     # Read batch size for validation
@@ -486,7 +486,7 @@ def rate(image_nums: tuple, rating: str):
     unprocessed = len(manager.get_unprocessed_feedback())
     config = Config.load()
     if unprocessed >= config.defaults.auto_learn_threshold:
-        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn'.[/cyan]")
+        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld learn'.[/cyan]")
 
 
 @main.command("brate")
@@ -514,7 +514,7 @@ def batch_rate(ratings_input: tuple):
     # Check for batch context
     if not manager.current_session_path.exists():
         console.print("[red]No batch context found.[/red]")
-        console.print("[yellow]Generate a batch first: splatworld-agent batch \"your prompt\"[/yellow]")
+        console.print("[yellow]Generate a batch first: splatworld batch \"your prompt\"[/yellow]")
         sys.exit(1)
 
     # Get batch info
@@ -604,7 +604,7 @@ def batch_rate(ratings_input: tuple):
     unprocessed = len(manager.get_unprocessed_feedback())
     config = Config.load()
     if unprocessed >= config.defaults.auto_learn_threshold:
-        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld-agent learn'.[/cyan]")
+        console.print(f"\n[cyan]You have {unprocessed} feedback entries. Consider running 'splatworld learn'.[/cyan]")
 
 
 @main.command()
@@ -625,18 +625,18 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
         --mode refine   Small targeted tweaks to what works
 
     Example workflow:
-        splatworld-agent batch "cozy cabin interior" -n 5 -c 2
+        splatworld batch "cozy cabin interior" -n 5 -c 2
         # Generates 5 images, you review them, learns preferences,
         # then generates 5 more with updated taste profile
 
-        splatworld-agent batch "cozy cabin" --mode refine
+        splatworld batch "cozy cabin" --mode refine
         # Fine-tune variants based on what's already working
     """
     prompt_text = " ".join(prompt)
 
     project_dir = get_project_dir()
     if not project_dir:
-        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
@@ -661,7 +661,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
         console.print(Panel.fit(
             f"[yellow]Profile not calibrated[/yellow]\n\n"
             f"{profile.training_progress}\n\n"
-            f"Consider running [cyan]splatworld-agent train \"{prompt_text}\"[/cyan]\n"
+            f"Consider running [cyan]splatworld train \"{prompt_text}\"[/cyan]\n"
             f"for guided training (generates, reviews, learns until calibrated).\n\n"
             f"[dim]Continuing with batch generation...[/dim]",
             title="Training Recommended",
@@ -762,9 +762,9 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 
             # Show rating instructions with new syntax
             console.print("\n[bold]Rate your images:[/bold]")
-            console.print("  [cyan]splatworld-agent rate 1 ++[/cyan]  - Love image 1")
-            console.print("  [cyan]splatworld-agent rate 3 -[/cyan]   - Dislike image 3")
-            console.print("  [cyan]splatworld-agent rate 2 5 +[/cyan] - Like images 2 and 5")
+            console.print("  [cyan]splatworld rate 1 ++[/cyan]  - Love image 1")
+            console.print("  [cyan]splatworld rate 3 -[/cyan]   - Dislike image 3")
+            console.print("  [cyan]splatworld rate 2 5 +[/cyan] - Like images 2 and 5")
 
             # If more cycles, prompt for review
             if cycle_num < cycles:
@@ -794,9 +794,9 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 
     console.print("\n[bold]Batch workflow complete![/bold]")
     console.print("Next steps:")
-    console.print("  1. [cyan]splatworld-agent rate 1 ++[/cyan] - Rate images by number")
-    console.print("  2. [cyan]splatworld-agent learn[/cyan] - Learn from your feedback")
-    console.print("  3. [cyan]splatworld-agent convert[/cyan] - Convert favorites to 3D splats")
+    console.print("  1. [cyan]splatworld rate 1 ++[/cyan] - Rate images by number")
+    console.print("  2. [cyan]splatworld learn[/cyan] - Learn from your feedback")
+    console.print("  3. [cyan]splatworld convert[/cyan] - Convert favorites to 3D splats")
 
 
 @main.command()
@@ -949,10 +949,10 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
             console.print(f"\n[yellow]Remaining unrated: {len(remaining)} images[/yellow]")
 
         if loved > 0:
-            console.print(f"\n[cyan]Run 'splatworld-agent convert' to turn your {loved} loved images into 3D splats.[/cyan]")
+            console.print(f"\n[cyan]Run 'splatworld convert' to turn your {loved} loved images into 3D splats.[/cyan]")
 
         if reviewed >= 3:
-            console.print(f"[cyan]Run 'splatworld-agent learn' to update your taste profile.[/cyan]")
+            console.print(f"[cyan]Run 'splatworld learn' to update your taste profile.[/cyan]")
 
         return
 
@@ -967,7 +967,7 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
         # Review current batch (default behavior)
         generations = manager.get_current_batch_generations()
         if not generations:
-            console.print("[yellow]No current batch. Generate one with: splatworld-agent batch \"prompt\"[/yellow]")
+            console.print("[yellow]No current batch. Generate one with: splatworld batch \"prompt\"[/yellow]")
             console.print("[dim]Or use --unrated to review all unrated images.[/dim]")
             return
     else:
@@ -1066,10 +1066,10 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
     console.print(f"Loved: {loved} images")
 
     if loved > 0:
-        console.print(f"\n[cyan]Run 'splatworld-agent convert' to turn your {loved} loved images into 3D splats.[/cyan]")
+        console.print(f"\n[cyan]Run 'splatworld convert' to turn your {loved} loved images into 3D splats.[/cyan]")
 
     if reviewed >= 3:
-        console.print(f"[cyan]Run 'splatworld-agent learn' to update your taste profile.[/cyan]")
+        console.print(f"[cyan]Run 'splatworld learn' to update your taste profile.[/cyan]")
 
 
 @main.command()
@@ -1224,7 +1224,7 @@ def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: b
                             console.print(f"[yellow]Splat download requires premium account. Viewer URL saved.[/yellow]")
                         else:
                             console.print(f"[yellow]Splat download failed: {error_msg}[/yellow]")
-                        console.print(f"[dim]Run 'splatworld-agent download-splats' later to retry.[/dim]")
+                        console.print(f"[dim]Run 'splatworld download-splats' later to retry.[/dim]")
                 elif result.splat_url and not config.defaults.download_splats:
                     console.print(f"[dim]Splat download skipped (download_splats=false). Viewer URL saved.[/dim]")
 
@@ -1563,7 +1563,7 @@ def learn(dry_run: bool):
 
             manager.save_profile(updated_profile)
             console.print("\n[bold green]Profile updated![/bold green]")
-            console.print("[dim]Use 'splatworld-agent profile' to view your updated taste profile.[/dim]")
+            console.print("[dim]Use 'splatworld profile' to view your updated taste profile.[/dim]")
 
     except Exception as e:
         console.print(f"\n[red]Learning failed:[/red] {e}")
@@ -1588,7 +1588,7 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
     """
     project_dir = get_project_dir()
     if not project_dir:
-        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld-agent init' first.[/red]")
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
         sys.exit(1)
 
     manager = ProfileManager(project_dir.parent)
@@ -1632,8 +1632,8 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
         console.print(f"[cyan]Resuming training with:[/cyan] {prompt_text}")
     else:
         console.print("[red]Error: No prompt provided and no training state to resume.[/red]")
-        console.print("[dim]Usage: splatworld-agent train \"your prompt\"[/dim]")
-        console.print("[dim]       splatworld-agent train 5  (to train 5 images with saved prompt)[/dim]")
+        console.print("[dim]Usage: splatworld train \"your prompt\"[/dim]")
+        console.print("[dim]       splatworld train 5  (to train 5 images with saved prompt)[/dim]")
         sys.exit(1)
 
     # Initialize training session
@@ -1854,7 +1854,7 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
             if no_rate:
                 # Non-interactive mode: skip rating, user can rate later with review
                 console.print(f"[dim]Generated: {gen_id}[/dim]")
-                console.print(f"[dim]Rate later with: splatworld-agent review --rate RATING -g {gen_id}[/dim]")
+                console.print(f"[dim]Rate later with: splatworld review --rate RATING -g {gen_id}[/dim]")
             else:
                 # Interactive mode: prompt for rating
                 while True:
@@ -1893,7 +1893,7 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
 
                     # Check for skip - exits training without forcing more ratings
                     if rating_input.lower() == "s":
-                        console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld-agent:review[/dim]")
+                        console.print("[dim]Skipping ratings - you can review unrated images later with /splatworld:review[/dim]")
                         cancelled = True
                         break
 
@@ -2022,10 +2022,10 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
         f"Total ratings: {profile.stats.feedback_count}\n"
         f"Profile: {'[green]CALIBRATED[/green]' if profile.is_calibrated else profile.training_progress}\n\n"
         f"[bold]Resume:[/bold]\n"
-        f"  [cyan]splatworld-agent resume[/cyan] - Continue training\n"
-        f"  [cyan]splatworld-agent train \"{prompt_text}\"[/cyan] - Continue with same prompt\n\n"
+        f"  [cyan]splatworld resume[/cyan] - Continue training\n"
+        f"  [cyan]splatworld train \"{prompt_text}\"[/cyan] - Continue with same prompt\n\n"
         f"[bold]Next steps:[/bold]\n"
-        f"  [cyan]splatworld-agent convert[/cyan] - Convert loved images to 3D splats",
+        f"  [cyan]splatworld convert[/cyan] - Convert loved images to 3D splats",
         title="Training Summary",
     ))
 
@@ -2075,7 +2075,7 @@ def cancel_training():
     This is equivalent to pressing Ctrl+C during training or typing 'cancel'.
 
     Example:
-        splatworld-agent cancel
+        splatworld cancel
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -2106,8 +2106,8 @@ def cancel_training():
         f"Images generated: {training_state.get('images_generated', 0)}\n"
         f"Base prompt: {training_state.get('base_prompt', 'unknown')}\n\n"
         f"[bold]Resume with:[/bold]\n"
-        f"  [cyan]splatworld-agent resume[/cyan]\n"
-        f"  [cyan]splatworld-agent train[/cyan] (auto-resumes)",
+        f"  [cyan]splatworld resume[/cyan]\n"
+        f"  [cyan]splatworld train[/cyan] (auto-resumes)",
         title="Training Stopped",
     ))
 
@@ -2122,7 +2122,7 @@ def resume_training():
     - Start new: Resumes generating new images with same base prompt
 
     Example:
-        splatworld-agent resume
+        splatworld resume
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -2136,7 +2136,7 @@ def resume_training():
 
     if not training_state:
         console.print("[yellow]No training session to resume.[/yellow]")
-        console.print("[dim]Start a new session with: splatworld-agent train \"your prompt\"[/dim]")
+        console.print("[dim]Start a new session with: splatworld train \"your prompt\"[/dim]")
         return
 
     session_id = training_state.get("session_id", "unknown")
@@ -2231,7 +2231,7 @@ def resume_training():
 
     # Now continue with new generations
     console.print(f"\n[cyan]Continuing training with: {base_prompt}[/cyan]")
-    console.print("[dim]Run 'splatworld-agent train' to generate new images.[/dim]")
+    console.print("[dim]Run 'splatworld train' to generate new images.[/dim]")
 
     # Reactivate session for train command to pick up
     training_state["status"] = "active"
@@ -2242,7 +2242,7 @@ def resume_training():
 def install_prompts():
     """Install Claude Code slash command prompts."""
     prompts_dir = Path(__file__).parent.parent / "prompts"
-    target_dir = Path.home() / ".claude" / "splatworld-agent"
+    target_dir = Path.home() / ".claude" / "splatworld"
 
     if not prompts_dir.exists():
         console.print("[red]Prompts directory not found in package.[/red]")
@@ -2256,7 +2256,7 @@ def install_prompts():
         console.print(f"Installed: {prompt_file.name}")
 
     console.print(f"\n[green]Prompts installed to {target_dir}[/green]")
-    console.print("You can now use /splatworld-agent:* commands in Claude Code.")
+    console.print("You can now use /splatworld:* commands in Claude Code.")
 
 
 @main.command()
@@ -2306,9 +2306,9 @@ def mode(new_mode: str):
               Best for: fine-tuning after finding promising directions
 
     Examples:
-        splatworld-agent mode           # Show current mode
-        splatworld-agent mode explore   # Switch to explore mode
-        splatworld-agent mode refine    # Switch to refine mode
+        splatworld mode           # Show current mode
+        splatworld mode explore   # Switch to explore mode
+        splatworld mode refine    # Switch to refine mode
 
     You can switch modes at any time during a training session.
     """
@@ -2326,8 +2326,8 @@ def mode(new_mode: str):
             f"[bold]Current Mode:[/bold] {current_mode}\n\n"
             f"{mode_desc}\n\n"
             f"[dim]Switch modes:[/dim]\n"
-            f"  [cyan]splatworld-agent mode explore[/cyan] - Try diverse approaches\n"
-            f"  [cyan]splatworld-agent mode refine[/cyan]  - Fine-tune what works",
+            f"  [cyan]splatworld mode explore[/cyan] - Try diverse approaches\n"
+            f"  [cyan]splatworld mode refine[/cyan]  - Fine-tune what works",
             title="Exploration Mode",
         ))
     else:
@@ -2380,14 +2380,14 @@ def cancel():
 
                 console.print("[green]Training session cancelled.[/green]")
                 console.print(f"[dim]Images generated: {session_data.get('images_generated', 0)}[/dim]")
-                console.print(f"\n[cyan]Resume with:[/cyan] splatworld-agent resume")
+                console.print(f"\n[cyan]Resume with:[/cyan] splatworld resume")
                 return
         except Exception:
             pass
 
     console.print("[green]Cancelled.[/green]")
     console.print("[dim]Any pending operations have been stopped.[/dim]")
-    console.print("[dim]Use /splatworld-agent:resume-work to continue later.[/dim]")
+    console.print("[dim]Use /splatworld:resume-work to continue later.[/dim]")
 
 
 @main.command()
@@ -2473,7 +2473,7 @@ def update():
         console.print(Panel.fit(
             f"[bold green]Updated Successfully![/bold green]\n\n"
             f"Pulled {len(new_commits)} new commit(s).\n\n"
-            f"[dim]Run '/splatworld-agent:help' to see new commands.[/dim]",
+            f"[dim]Run '/splatworld:help' to see new commands.[/dim]",
             title="SplatWorld Agent",
         ))
 
@@ -2516,7 +2516,7 @@ def help():
         "  config         View/edit configuration\n"
         "  update         Update to latest version from git\n"
         "  install-prompts  Install Claude Code slash commands\n\n"
-        "[dim]Use 'splatworld-agent COMMAND --help' for command details.[/dim]",
+        "[dim]Use 'splatworld COMMAND --help' for command details.[/dim]",
         title="SplatWorld Agent",
     ))
 
@@ -2541,7 +2541,7 @@ def exit_session(summary: str, notes: str):
     current = manager.get_current_session()
     if not current:
         console.print("[yellow]No active session to end.[/yellow]")
-        console.print("[dim]Start a session with 'splatworld-agent resume-work' first.[/dim]")
+        console.print("[dim]Start a session with 'splatworld resume-work' first.[/dim]")
         return
 
     # Calculate duration
@@ -2583,7 +2583,7 @@ def exit_session(summary: str, notes: str):
         + (f"[bold]Notes:[/bold] {notes}\n" if notes else "")
         + (f"\n[bold]Last prompt:[/bold] {session.last_prompt[:50]}..." if session.last_prompt and len(session.last_prompt) > 50 else
            f"\n[bold]Last prompt:[/bold] {session.last_prompt}" if session.last_prompt else "")
-        + f"\n\n[dim]Session saved. Use 'splatworld-agent resume-work' to continue.[/dim]",
+        + f"\n\n[dim]Session saved. Use 'splatworld resume-work' to continue.[/dim]",
         title="Goodbye!",
     ))
 
@@ -2615,7 +2615,7 @@ def resume_work():
             f"[yellow]Active session found[/yellow]\n\n"
             f"Started: {current.started.strftime('%Y-%m-%d %H:%M')}\n"
             f"Duration: {duration_str}\n\n"
-            f"[dim]Use 'splatworld-agent exit' to end this session first,[/dim]\n"
+            f"[dim]Use 'splatworld exit' to end this session first,[/dim]\n"
             f"[dim]or continue working in the current session.[/dim]",
             title="Session Already Active",
         ))
@@ -2682,7 +2682,7 @@ def resume_work():
 
     if unrated:
         console.print(f"\n  [yellow]Unrated generations: {len(unrated)}[/yellow]")
-        console.print(f"  [dim]Run 'splatworld-agent review --unrated' to rate them[/dim]")
+        console.print(f"  [dim]Run 'splatworld review --unrated' to rate them[/dim]")
 
     # Check for loved images without splats
     loved_without_splats = []
@@ -2693,7 +2693,7 @@ def resume_work():
 
     if loved_without_splats:
         console.print(f"\n  [cyan]Loved images ready for conversion: {len(loved_without_splats)}[/cyan]")
-        console.print(f"  [dim]Run 'splatworld-agent convert' to create 3D splats[/dim]")
+        console.print(f"  [dim]Run 'splatworld convert' to create 3D splats[/dim]")
 
     # Start new session
     session = manager.start_session()
@@ -2729,7 +2729,7 @@ def splats(ctx: click.Context, open_id: str = None) -> None:
 
     if not splat_gens:
         console.print("[yellow]No converted splats found.[/yellow]")
-        console.print("[dim]Run 'splatworld-agent convert' to create 3D splats from loved images.[/dim]")
+        console.print("[dim]Run 'splatworld convert' to create 3D splats from loved images.[/dim]")
         return
 
     if open_id:
@@ -2752,7 +2752,7 @@ def splats(ctx: click.Context, open_id: str = None) -> None:
         console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
         console.print()
 
-    console.print("[dim]Tip: Use --open <id> to open a viewer directly, e.g.: splatworld-agent splats --open abc123[/dim]")
+    console.print("[dim]Tip: Use --open <id> to open a viewer directly, e.g.: splatworld splats --open abc123[/dim]")
 
 
 @main.command("download-splats")
@@ -2880,8 +2880,8 @@ def list_worlds(open_id: str = None) -> None:
     you've created, not just those tracked locally.
 
     Examples:
-        splatworld-agent worlds                    # List all worlds
-        splatworld-agent worlds --open <world_id>  # Open viewer for a world
+        splatworld worlds                    # List all worlds
+        splatworld worlds --open <world_id>  # Open viewer for a world
     """
     config = Config.load()
     if not config.api_keys.marble:
@@ -2948,9 +2948,9 @@ def prompt_history(limit: int, session: str, lineage: str, stats: bool, as_json:
     and lineage (which variants led to which).
 
     Examples:
-        splatworld-agent prompt-history              # Recent variants
-        splatworld-agent prompt-history --stats      # Show statistics
-        splatworld-agent prompt-history -l var-xxx   # Show variant lineage
+        splatworld prompt-history              # Recent variants
+        splatworld prompt-history --stats      # Show statistics
+        splatworld prompt-history -l var-xxx   # Show variant lineage
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -2963,7 +2963,7 @@ def prompt_history(limit: int, session: str, lineage: str, stats: bool, as_json:
     if not manager.prompt_history_path.exists():
         console.print("[yellow]No prompt history found.[/yellow]")
         console.print("[dim]Prompt history is recorded during training sessions.[/dim]")
-        console.print("[dim]Run 'splatworld-agent train \"prompt\"' to start recording.[/dim]")
+        console.print("[dim]Run 'splatworld train \"prompt\"' to start recording.[/dim]")
         return
 
     # Stats mode
