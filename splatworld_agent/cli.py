@@ -3121,5 +3121,89 @@ def prompt_history(limit: int, session: str, lineage: str, stats: bool, as_json:
     console.print("[dim]  --session <id>  Filter by training session[/dim]")
 
 
+@main.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be migrated without making changes")
+@click.option("--verify", "verify_only", is_flag=True, help="Only show migration status, don't migrate")
+def migrate(dry_run: bool, verify_only: bool):
+    """Migrate existing images to flat file structure.
+
+    Converts nested structure (generated_images/DATE/UUID/source.png)
+    to flat structure (generated_images/N.png) with sequential numbering.
+
+    Migration is idempotent - already-migrated images are skipped.
+    Images are numbered chronologically (oldest gets lowest numbers).
+    """
+    project_dir = get_project_dir()
+    if not project_dir:
+        console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
+        sys.exit(1)
+
+    manager = ProfileManager(project_dir.parent)
+
+    if verify_only:
+        # Just show status
+        stats = manager.verify_migration()
+
+        console.print(Panel.fit(
+            f"[bold]Migration Status[/bold]\n\n"
+            f"[cyan]Nested Structure:[/cyan]\n"
+            f"  Images: {stats['nested_images']}\n"
+            f"  Splats: {stats['nested_splats']}\n\n"
+            f"[cyan]Flat Structure:[/cyan]\n"
+            f"  Images: {stats['flat_images']}\n"
+            f"  Splats: {stats['flat_splats']}\n\n"
+            f"[cyan]Registry:[/cyan]\n"
+            f"  Registered IDs: {stats['registered']}\n"
+            f"  Next number: {stats['next_number']}\n"
+            f"  Unregistered: {len(stats['unregistered'])}",
+            title="File Structure Status",
+        ))
+
+        if stats['unregistered']:
+            console.print(f"\n[yellow]Unregistered images found ({len(stats['unregistered'])}):[/yellow]")
+            for uid in stats['unregistered'][:5]:
+                console.print(f"  - {uid}")
+            if len(stats['unregistered']) > 5:
+                console.print(f"  ... and {len(stats['unregistered']) - 5} more")
+            console.print("\n[dim]Run 'splatworld migrate' to migrate these images.[/dim]")
+        else:
+            console.print("\n[green]All images are migrated.[/green]")
+
+        return
+
+    # Run migration
+    if dry_run:
+        console.print("[yellow]DRY RUN - no changes will be made[/yellow]\n")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Migrating images...", total=None)
+        stats = manager.migrate_existing_generations(dry_run=dry_run)
+        progress.update(task, completed=True)
+
+    # Display results
+    action = "Would migrate" if dry_run else "Migrated"
+    console.print(Panel.fit(
+        f"[bold]Migration {'Preview' if dry_run else 'Complete'}[/bold]\n\n"
+        f"{action}: [green]{stats['migrated']}[/green] images\n"
+        f"Skipped (already migrated): [dim]{stats['skipped']}[/dim]\n"
+        f"Splats {action.lower()}: [cyan]{stats['splats_migrated']}[/cyan]",
+        title="Migration Results",
+    ))
+
+    if stats['errors']:
+        console.print(f"\n[red]Errors ({len(stats['errors'])}):[/red]")
+        for error in stats['errors'][:10]:
+            console.print(f"  - {error}")
+        if len(stats['errors']) > 10:
+            console.print(f"  ... and {len(stats['errors']) - 10} more")
+
+    if dry_run and stats['migrated'] > 0:
+        console.print("\n[dim]Run without --dry-run to perform migration.[/dim]")
+
+
 if __name__ == "__main__":
     main()
