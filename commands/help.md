@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:help
+name: splatworld:help
 description: Show available SplatWorld Agent commands and usage guide
 ---
 

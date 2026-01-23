@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:prompt-history
+name: splatworld:prompt-history
 description: View prompt variant history from training sessions
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:download-splats
+name: splatworld:download-splats
 description: Download splat files that haven't been downloaded yet
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

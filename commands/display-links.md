@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:display-links
+name: splatworld:display-links
 description: Display World Labs viewer links for all converted splats
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

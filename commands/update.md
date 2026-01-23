@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:update
+name: splatworld:update
 description: Update SplatWorld Agent to latest version
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

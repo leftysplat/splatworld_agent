@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:feedback
+name: splatworld:feedback
 description: Provide feedback on a generation
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

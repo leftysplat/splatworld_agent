@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:resume-work
+name: splatworld:resume-work
 description: Resume work from previous session
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

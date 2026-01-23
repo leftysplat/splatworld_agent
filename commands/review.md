@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:review
+name: splatworld:review
 description: Interactively review and rate generated images
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---

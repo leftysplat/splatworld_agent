@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:exit
+name: splatworld:exit
 description: Save session and exit SplatWorld Agent
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

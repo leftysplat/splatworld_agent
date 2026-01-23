@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:batch
+name: splatworld:batch
 description: Generate a batch of images for review
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

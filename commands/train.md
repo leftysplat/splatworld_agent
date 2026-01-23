@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:train
+name: splatworld:train
 description: Guided training mode to calibrate your taste profile (20 images)
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---

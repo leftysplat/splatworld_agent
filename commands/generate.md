@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:generate
+name: splatworld:generate
 description: Generate a single image + splat from prompt
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

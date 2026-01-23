@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:convert
+name: splatworld:convert
 description: Convert loved images to 3D splats
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*), AskUserQuestion
 ---

@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:profile
+name: splatworld:profile
 description: View or edit your taste profile
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

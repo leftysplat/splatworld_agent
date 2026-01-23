@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:worlds
+name: splatworld:worlds
 description: List all worlds from your Marble/WorldLabs account
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

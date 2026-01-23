@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:learn
+name: splatworld:learn
 description: Synthesize feedback into updated preferences
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---

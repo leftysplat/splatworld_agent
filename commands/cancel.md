@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:cancel
+name: splatworld:cancel
 description: Cancel the current SplatWorld action
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*)
 ---
