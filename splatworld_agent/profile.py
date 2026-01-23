@@ -3,6 +3,7 @@ Profile management for SplatWorld Agent.
 """
 
 import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,10 @@ class ProfileManager:
     # Visible directories at project root (for user-accessible files)
     IMAGES_DIR = "generated_images"
     SPLATS_DIR = "downloaded_splats"
+
+    # Sequential numbering support (FILE-02)
+    IMAGE_REGISTRY_FILE = "image_registry.json"
+    METADATA_DIR = "metadata"
 
     def __init__(self, project_dir: Path):
         """Initialize profile manager for a project directory."""
@@ -77,6 +82,16 @@ class ProfileManager:
         """Path to prompt_history.jsonl file for tracking prompt variants."""
         return self.splatworld_dir / self.PROMPT_HISTORY_FILE
 
+    @property
+    def metadata_dir(self) -> Path:
+        """Directory for metadata files (registry, etc.)."""
+        return self.splatworld_dir / self.METADATA_DIR
+
+    @property
+    def image_registry_path(self) -> Path:
+        """Path to image_registry.json file."""
+        return self.metadata_dir / self.IMAGE_REGISTRY_FILE
+
     def is_initialized(self) -> bool:
         """Check if project has been initialized."""
         return self.splatworld_dir.exists() and self.profile_path.exists()
@@ -88,6 +103,7 @@ class ProfileManager:
         self.generations_dir.mkdir(exist_ok=True)
         self.exemplars_dir.mkdir(exist_ok=True)
         self.anti_exemplars_dir.mkdir(exist_ok=True)
+        self.metadata_dir.mkdir(exist_ok=True)  # For registry and other metadata
 
         # Create visible directories (user-accessible files)
         self.images_dir.mkdir(exist_ok=True)
@@ -750,3 +766,111 @@ class ProfileManager:
             "unique_base_prompts": len(base_prompts),
             "training_sessions": len(sessions),
         }
+
+    # Sequential image numbering methods (FILE-02)
+
+    def _atomic_save_profile(self, profile: TasteProfile) -> None:
+        """Save profile atomically using temp file + rename.
+
+        This prevents race conditions and ensures profile is never corrupted
+        even if interrupted mid-write.
+        """
+        temp_path = self.profile_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            json.dump(profile.to_dict(), f, indent=2)
+        temp_path.replace(self.profile_path)
+
+    def get_next_image_number(self) -> int:
+        """Get the next image number and atomically increment the counter.
+
+        Returns:
+            The next sequential image number (starts at 1)
+
+        Thread-safety: Uses atomic file write to prevent race conditions.
+        """
+        profile = self.load_profile()
+        next_num = profile.next_image_number
+        profile.next_image_number += 1
+        self._atomic_save_profile(profile)
+        return next_num
+
+    def _scan_for_highest_image_number(self) -> int:
+        """Scan existing images to find the highest image number.
+
+        Used for recovery if counter gets out of sync.
+
+        Returns:
+            The highest image number found, or 0 if no numbered images exist.
+        """
+        highest = 0
+        pattern = re.compile(r"^(\d{4})-")  # Match NNNN- prefix
+
+        # Scan images_dir for numbered images
+        if self.images_dir.exists():
+            for item in self.images_dir.iterdir():
+                match = pattern.match(item.name)
+                if match:
+                    num = int(match.group(1))
+                    highest = max(highest, num)
+
+        # Also check splats_dir
+        if self.splats_dir.exists():
+            for item in self.splats_dir.iterdir():
+                match = pattern.match(item.name)
+                if match:
+                    num = int(match.group(1))
+                    highest = max(highest, num)
+
+        return highest
+
+    def get_image_registry(self) -> dict:
+        """Get the image registry mapping old IDs to new sequential numbers.
+
+        Returns:
+            Dict mapping old generation IDs to their new sequential numbers.
+        """
+        if not self.image_registry_path.exists():
+            return {}
+
+        with open(self.image_registry_path) as f:
+            return json.load(f)
+
+    def register_image(self, old_id: str, new_number: int) -> None:
+        """Register a mapping from old generation ID to new sequential number.
+
+        Args:
+            old_id: The original generation UUID/ID
+            new_number: The new sequential image number
+        """
+        registry = self.get_image_registry()
+        registry[old_id] = new_number
+
+        # Atomic write
+        self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = self.image_registry_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            json.dump(registry, f, indent=2)
+        temp_path.replace(self.image_registry_path)
+
+    def resolve_to_number(self, ref: str) -> Optional[int]:
+        """Resolve a reference (number or old ID) to a sequential image number.
+
+        Args:
+            ref: Either a number string ("1", "42") or an old generation ID
+
+        Returns:
+            The sequential image number, or None if not found
+        """
+        # Check if it's already a number
+        if ref.isdigit():
+            return int(ref)
+
+        # Check if it's a number with leading zeros
+        try:
+            return int(ref)
+        except ValueError:
+            pass
+
+        # Look up in registry
+        registry = self.get_image_registry()
+        return registry.get(ref)
