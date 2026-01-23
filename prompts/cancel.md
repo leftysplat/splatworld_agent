@@ -13,7 +13,7 @@ Saves training state so you can resume later.
 
 <execution>
 ```bash
-splatworld-agent cancel
+splatworld cancel
 ```
 
 This is equivalent to:

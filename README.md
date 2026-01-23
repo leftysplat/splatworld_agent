@@ -28,25 +28,25 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 ### Quick Install
 
 ```bash
-# One-line install (installs to ~/.claude/splatworld-agent)
-curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld_agent/main/install.sh | bash
+# One-line install (installs to ~/.claude/splatworld)
+curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld/main/install.sh | bash
 ```
 
 Or clone and run:
 ```bash
-git clone https://github.com/leftysplat/splatworld_agent.git && (cd splatworld_agent && ./install.sh)
+git clone https://github.com/leftysplat/splatworld.git && (cd splatworld && ./install.sh)
 ```
 
 The installer will:
-1. Install to `~/.claude/splatworld-agent/` (like GSD)
-2. Set up commands at `~/.claude/commands/splatworld-agent/`
+1. Install to `~/.claude/splatworld/` (like GSD)
+2. Set up commands at `~/.claude/commands/splatworld/`
 3. Available from **any project directory**
 
 ### Updating
 
 Once installed, update from within Claude Code:
 ```
-/splatworld-agent:update
+/splatworld:update
 ```
 
 This pulls the latest changes from the repository. Since commands are symlinked, updates are immediate.
@@ -84,7 +84,7 @@ cd your-project
 
 Then in Claude Code:
 ```
-/splatworld-agent:init
+/splatworld:init
 ```
 
 This creates `.splatworld/` in your project with an empty taste profile.
@@ -92,7 +92,7 @@ This creates `.splatworld/` in your project with an empty taste profile.
 ### 2. Generate Your First Splat
 
 ```
-/splatworld-agent:generate modern kitchen with marble countertops
+/splatworld:generate modern kitchen with marble countertops
 ```
 
 The agent will:
@@ -106,15 +106,15 @@ The agent will:
 
 After viewing a generation:
 ```
-/splatworld-agent:feedback love the lighting, but too cluttered
+/splatworld:feedback love the lighting, but too cluttered
 ```
 
 Or use quick reactions:
 ```
-/splatworld-agent:feedback ++      # Love it
-/splatworld-agent:feedback --      # Hate it
-/splatworld-agent:feedback +       # Good
-/splatworld-agent:feedback -       # Not great
+/splatworld:feedback ++      # Love it
+/splatworld:feedback --      # Hate it
+/splatworld:feedback +       # Good
+/splatworld:feedback -       # Not great
 ```
 
 ### 4. Add Exemplars
@@ -122,7 +122,7 @@ Or use quick reactions:
 Have an image that captures exactly what you want?
 
 ```
-/splatworld-agent:exemplar ./reference-images/perfect-kitchen.jpg
+/splatworld:exemplar ./reference-images/perfect-kitchen.jpg
 ```
 
 This adds it to your taste profile. The agent will reference it when generating.
@@ -130,7 +130,7 @@ This adds it to your taste profile. The agent will reference it when generating.
 ### 5. View Your Taste Profile
 
 ```
-/splatworld-agent:profile
+/splatworld:profile
 ```
 
 Shows your learned preferences:
@@ -144,7 +144,7 @@ Shows your learned preferences:
 
 Periodically (or manually):
 ```
-/splatworld-agent:learn
+/splatworld:learn
 ```
 
 This analyzes your feedback history and updates your preference vectors.
@@ -156,7 +156,7 @@ This analyzes your feedback history and updates your preference vectors.
 #### `init`
 Initialize `.splatworld/` in a project directory.
 ```bash
-splatworld-agent init [--path PATH]
+splatworld init [--path PATH]
 ```
 | Option | Description |
 |--------|-------------|
@@ -165,7 +165,7 @@ splatworld-agent init [--path PATH]
 #### `setup-keys`
 Configure API keys for SplatWorld Agent.
 ```bash
-splatworld-agent setup-keys [OPTIONS]
+splatworld setup-keys [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -177,25 +177,25 @@ splatworld-agent setup-keys [OPTIONS]
 #### `check-keys`
 Check API key configuration status.
 ```bash
-splatworld-agent check-keys
+splatworld check-keys
 ```
 
 #### `config`
 View or edit configuration.
 ```bash
-splatworld-agent config
+splatworld config
 ```
 
 #### `install-prompts`
 Install Claude Code slash command prompts.
 ```bash
-splatworld-agent install-prompts
+splatworld install-prompts
 ```
 
 #### `update`
 Update SplatWorld Agent to the latest version (pulls from git).
 ```bash
-splatworld-agent update
+splatworld update
 ```
 
 ---
@@ -205,7 +205,7 @@ splatworld-agent update
 #### `generate`
 Generate a single image and optionally convert to 3D splat.
 ```bash
-splatworld-agent generate [OPTIONS] PROMPT...
+splatworld generate [OPTIONS] PROMPT...
 ```
 | Option | Description |
 |--------|-------------|
@@ -216,13 +216,13 @@ splatworld-agent generate [OPTIONS] PROMPT...
 
 **Example:**
 ```bash
-splatworld-agent generate "cozy cabin with fireplace" --seed 42
+splatworld generate "cozy cabin with fireplace" --seed 42
 ```
 
 #### `batch`
 Generate multiple images for review in cycles.
 ```bash
-splatworld-agent batch [OPTIONS] PROMPT...
+splatworld batch [OPTIONS] PROMPT...
 ```
 | Option | Description |
 |--------|-------------|
@@ -233,14 +233,14 @@ splatworld-agent batch [OPTIONS] PROMPT...
 
 **Example:**
 ```bash
-splatworld-agent batch "modern kitchen" -n 5 -c 2
+splatworld batch "modern kitchen" -n 5 -c 2
 # Generates 5 images, review them, learns, generates 5 more
 ```
 
 #### `train`
 Guided training mode to calibrate your taste profile.
 ```bash
-splatworld-agent train [OPTIONS] PROMPT...
+splatworld train [OPTIONS] PROMPT...
 ```
 | Option | Description |
 |--------|-------------|
@@ -251,7 +251,7 @@ Runs generate-review-learn cycles until calibrated (minimum 20 rated images).
 
 **Example:**
 ```bash
-splatworld-agent train "industrial warehouse"
+splatworld train "industrial warehouse"
 ```
 
 ---
@@ -261,7 +261,7 @@ splatworld-agent train "industrial warehouse"
 #### `rate`
 Rate images by number from the current batch.
 ```bash
-splatworld-agent rate IMAGE_NUMS... {++|+|-|--}
+splatworld rate IMAGE_NUMS... {++|+|-|--}
 ```
 
 **Rating scale:**
@@ -274,27 +274,27 @@ splatworld-agent rate IMAGE_NUMS... {++|+|-|--}
 
 **Examples:**
 ```bash
-splatworld-agent rate 1 ++       # Rate image 1 as love
-splatworld-agent rate 3 -        # Rate image 3 as not great
-splatworld-agent rate 2 5 +      # Rate images 2 and 5 as good
+splatworld rate 1 ++       # Rate image 1 as love
+splatworld rate 3 -        # Rate image 3 as not great
+splatworld rate 2 5 +      # Rate images 2 and 5 as good
 ```
 
 #### `brate`
 Rate multiple images with different ratings in one command.
 ```bash
-splatworld-agent brate RATINGS_INPUT...
+splatworld brate RATINGS_INPUT...
 ```
 
 **Examples:**
 ```bash
-splatworld-agent brate 1 ++ 2 - 3 -- 4 +
-splatworld-agent brate 1++ 2- 3-- 4+    # Spaces optional
+splatworld brate 1 ++ 2 - 3 -- 4 +
+splatworld brate 1++ 2- 3-- 4+    # Spaces optional
 ```
 
 #### `review`
 Interactively review and rate generated images.
 ```bash
-splatworld-agent review [OPTIONS]
+splatworld review [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -316,7 +316,7 @@ splatworld-agent review [OPTIONS]
 #### `feedback`
 Provide text feedback on a generation.
 ```bash
-splatworld-agent feedback [OPTIONS] [FEEDBACK_TEXT]...
+splatworld feedback [OPTIONS] [FEEDBACK_TEXT]...
 ```
 | Option | Description |
 |--------|-------------|
@@ -324,7 +324,7 @@ splatworld-agent feedback [OPTIONS] [FEEDBACK_TEXT]...
 
 **Example:**
 ```bash
-splatworld-agent feedback "love the lighting, but too cluttered"
+splatworld feedback "love the lighting, but too cluttered"
 ```
 
 ---
@@ -334,7 +334,7 @@ splatworld-agent feedback "love the lighting, but too cluttered"
 #### `convert`
 Convert loved images to 3D splats via World Labs Marble API.
 ```bash
-splatworld-agent convert [OPTIONS]
+splatworld convert [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -347,7 +347,7 @@ By default, converts all images rated `++` that don't already have splats.
 #### `splats`
 List all converted splats with their World Labs viewer URLs.
 ```bash
-splatworld-agent splats [OPTIONS]
+splatworld splats [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -355,14 +355,14 @@ splatworld-agent splats [OPTIONS]
 
 **Examples:**
 ```bash
-splatworld-agent splats                    # List all splats with URLs
-splatworld-agent splats --open abc123      # Open specific splat in browser
+splatworld splats                    # List all splats with URLs
+splatworld splats --open abc123      # Open specific splat in browser
 ```
 
 #### `download-splats`
 Download splat files that haven't been downloaded yet.
 ```bash
-splatworld-agent download-splats [OPTIONS]
+splatworld download-splats [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -376,8 +376,8 @@ or for retrying failed downloads.
 
 **Examples:**
 ```bash
-splatworld-agent download-splats           # List missing splats, prompt to download
-splatworld-agent download-splats --all     # Download all without confirmation
+splatworld download-splats           # List missing splats, prompt to download
+splatworld download-splats --all     # Download all without confirmation
 ```
 
 ---
@@ -387,7 +387,7 @@ splatworld-agent download-splats --all     # Download all without confirmation
 #### `profile`
 View or edit your taste profile.
 ```bash
-splatworld-agent profile [OPTIONS]
+splatworld profile [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -397,7 +397,7 @@ splatworld-agent profile [OPTIONS]
 #### `learn`
 Synthesize feedback into updated preferences.
 ```bash
-splatworld-agent learn [OPTIONS]
+splatworld learn [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -406,7 +406,7 @@ splatworld-agent learn [OPTIONS]
 #### `exemplar`
 Add an exemplar image (things you love) to your taste profile.
 ```bash
-splatworld-agent exemplar [OPTIONS] IMAGE_PATH
+splatworld exemplar [OPTIONS] IMAGE_PATH
 ```
 | Option | Description |
 |--------|-------------|
@@ -414,13 +414,13 @@ splatworld-agent exemplar [OPTIONS] IMAGE_PATH
 
 **Example:**
 ```bash
-splatworld-agent exemplar ./reference/perfect-kitchen.jpg -n "Love the warm lighting"
+splatworld exemplar ./reference/perfect-kitchen.jpg -n "Love the warm lighting"
 ```
 
 #### `anti-exemplar`
 Add an anti-exemplar image (things you never want).
 ```bash
-splatworld-agent anti-exemplar [OPTIONS] IMAGE_PATH
+splatworld anti-exemplar [OPTIONS] IMAGE_PATH
 ```
 | Option | Description |
 |--------|-------------|
@@ -433,7 +433,7 @@ splatworld-agent anti-exemplar [OPTIONS] IMAGE_PATH
 #### `history`
 Browse past generations.
 ```bash
-splatworld-agent history [OPTIONS]
+splatworld history [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -442,7 +442,7 @@ splatworld-agent history [OPTIONS]
 #### `exit`
 Save session and exit SplatWorld Agent.
 ```bash
-splatworld-agent exit [OPTIONS]
+splatworld exit [OPTIONS]
 ```
 | Option | Description |
 |--------|-------------|
@@ -454,7 +454,7 @@ Records session activity (generations, feedback, conversions, learns) for later 
 #### `resume-work`
 Resume work from previous session.
 ```bash
-splatworld-agent resume-work
+splatworld resume-work
 ```
 
 Shows recent session history, current status, and starts a new session.
@@ -467,24 +467,24 @@ All CLI commands are available as slash commands in Claude Code:
 
 | Slash Command | CLI Equivalent |
 |---------------|----------------|
-| `/splatworld-agent:init` | `splatworld-agent init` |
-| `/splatworld-agent:generate <prompt>` | `splatworld-agent generate <prompt>` |
-| `/splatworld-agent:batch <prompt>` | `splatworld-agent batch <prompt>` |
-| `/splatworld-agent:train <prompt>` | `splatworld-agent train <prompt>` |
-| `/splatworld-agent:review` | `splatworld-agent review` |
-| `/splatworld-agent:feedback <text>` | `splatworld-agent feedback <text>` |
-| `/splatworld-agent:learn` | `splatworld-agent learn` |
-| `/splatworld-agent:convert` | `splatworld-agent convert` |
-| `/splatworld-agent:splats` | `splatworld-agent splats` |
-| `/splatworld-agent:download-splats` | `splatworld-agent download-splats` |
-| `/splatworld-agent:display-links` | `splatworld-agent splats` |
-| `/splatworld-agent:profile` | `splatworld-agent profile` |
-| `/splatworld-agent:exemplar <path>` | `splatworld-agent exemplar <path>` |
-| `/splatworld-agent:history` | `splatworld-agent history` |
-| `/splatworld-agent:exit` | `splatworld-agent exit` |
-| `/splatworld-agent:resume-work` | `splatworld-agent resume-work` |
-| `/splatworld-agent:help` | `splatworld-agent help` |
-| `/splatworld-agent:update` | `splatworld-agent update` |
+| `/splatworld:init` | `splatworld init` |
+| `/splatworld:generate <prompt>` | `splatworld generate <prompt>` |
+| `/splatworld:batch <prompt>` | `splatworld batch <prompt>` |
+| `/splatworld:train <prompt>` | `splatworld train <prompt>` |
+| `/splatworld:review` | `splatworld review` |
+| `/splatworld:feedback <text>` | `splatworld feedback <text>` |
+| `/splatworld:learn` | `splatworld learn` |
+| `/splatworld:convert` | `splatworld convert` |
+| `/splatworld:splats` | `splatworld splats` |
+| `/splatworld:download-splats` | `splatworld download-splats` |
+| `/splatworld:display-links` | `splatworld splats` |
+| `/splatworld:profile` | `splatworld profile` |
+| `/splatworld:exemplar <path>` | `splatworld exemplar <path>` |
+| `/splatworld:history` | `splatworld history` |
+| `/splatworld:exit` | `splatworld exit` |
+| `/splatworld:resume-work` | `splatworld resume-work` |
+| `/splatworld:help` | `splatworld help` |
+| `/splatworld:update` | `splatworld update` |
 
 ## Project Structure
 
@@ -608,7 +608,7 @@ so you can easily browse them in Finder or your file manager. Metadata is stored
 
 1. **Feedback collection**: Every rating and critique is logged to `feedback.jsonl`
 
-2. **Pattern extraction**: The `/splatworld-agent:learn` command (or automatic periodic learning) analyzes feedback to find patterns:
+2. **Pattern extraction**: The `/splatworld:learn` command (or automatic periodic learning) analyzes feedback to find patterns:
    - "User consistently dislikes flat lighting" → update `visual_style.lighting.avoid`
    - "User always rates industrial environments highly" → update `domain.environments`
 
@@ -664,19 +664,19 @@ The slash commands call the CLI under the hood. You can also use it directly:
 
 ```bash
 # Initialize
-splatworld-agent init
+splatworld init
 
 # Generate
-splatworld-agent generate "modern kitchen" --seed 42
+splatworld generate "modern kitchen" --seed 42
 
 # Feedback
-splatworld-agent feedback "love it" --generation kitchen-001
+splatworld feedback "love it" --generation kitchen-001
 
 # View profile
-splatworld-agent profile show
+splatworld profile show
 
 # Learn from feedback
-splatworld-agent learn
+splatworld learn
 ```
 
 ## Development
@@ -705,7 +705,7 @@ For detailed documentation on viewing and rating images, see [docs/USAGE.md](spl
 
 ### "Profile not found"
 
-Run `/splatworld-agent:init` first to create `.splatworld/` in your project.
+Run `/splatworld:init` first to create `.splatworld/` in your project.
 
 ### "API key not configured"
 
@@ -720,7 +720,7 @@ Check the error message. Common issues:
 
 ### "Taste profile not updating"
 
-Feedback is collected but preferences only update when you run `/splatworld-agent:learn` or after enough feedback accumulates (default: 10 new entries).
+Feedback is collected but preferences only update when you run `/splatworld:learn` or after enough feedback accumulates (default: 10 new entries).
 
 ## License
 

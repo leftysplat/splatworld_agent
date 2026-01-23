@@ -13,7 +13,7 @@ Analyzes patterns in your feedback to extract what you consistently like and dis
 
 <execution>
 ```bash
-splatworld-agent learn
+splatworld learn
 ```
 
 After learning completes:

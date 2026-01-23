@@ -1,5 +1,5 @@
 ---
-name: splatworld-agent:train
+name: splatworld:train
 description: Run adaptive training CLI (DO NOT implement yourself)
 allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*train*)
 ---
@@ -9,7 +9,7 @@ allowed-tools: Bash(PYTHONPATH*python3*splatworld_agent.cli*train*)
 **Your ONLY job is to run this ONE bash command:**
 
 ```bash
-export PYTHONPATH=~/.claude/splatworld-agent && python3 -m splatworld_agent.cli train [USER_ARGS]
+export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli train [USER_ARGS]
 ```
 
 Pass the user's arguments directly to the CLI. Examples:

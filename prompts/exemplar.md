@@ -18,7 +18,7 @@ The agent will reference these when generating.
 
 <execution>
 ```bash
-splatworld-agent exemplar "<path>" [--notes "<notes>"]
+splatworld exemplar "<path>" [--notes "<notes>"]
 ```
 
 After adding:
@@ -29,8 +29,8 @@ After adding:
 
 <examples>
 User: "add this reference image ./reference/perfect-kitchen.jpg"
-→ splatworld-agent exemplar "./reference/perfect-kitchen.jpg"
+→ splatworld exemplar "./reference/perfect-kitchen.jpg"
 
 User: "add ./moody-warehouse.png with notes about the lighting"
-→ splatworld-agent exemplar "./moody-warehouse.png" --notes "Love the dramatic shadows and warm highlights"
+→ splatworld exemplar "./moody-warehouse.png" --notes "Love the dramatic shadows and warm highlights"
 </examples>

@@ -1,10 +1,10 @@
 # Image Rating Workflows
 
-This guide explains how to view and rate generated images in splatworld-agent. There are two workflows: the default workflow (works everywhere) and the inline preview workflow (for supported terminals).
+This guide explains how to view and rate generated images in splatworld. There are two workflows: the default workflow (works everywhere) and the inline preview workflow (for supported terminals).
 
 ## Image Rating Workflows Overview
 
-splatworld-agent provides two ways to rate images:
+splatworld provides two ways to rate images:
 
 | Workflow | Description | Best For |
 |----------|-------------|----------|
@@ -21,7 +21,7 @@ The default workflow works in **all terminals** including VS Code integrated ter
 
 1. **Generate images:**
    ```bash
-   splatworld-agent batch "modern kitchen with warm lighting"
+   splatworld batch "modern kitchen with warm lighting"
    ```
 
 2. **Output shows summary:**
@@ -41,13 +41,13 @@ The default workflow works in **all terminals** including VS Code integrated ter
 4. **Rate by number:**
    ```bash
    # Rate a single image
-   splatworld-agent rate 1 ++
+   splatworld rate 1 ++
 
    # Rate multiple images with same rating
-   splatworld-agent rate 1 2 3 +
+   splatworld rate 1 2 3 +
 
    # Batch rate with different ratings
-   splatworld-agent brate 1 ++ 2 - 3 +
+   splatworld brate 1 ++ 2 - 3 +
    ```
 
 ### Why This Is the Default
@@ -85,10 +85,10 @@ For users with supported terminals who prefer to see images directly in the term
 
 ```bash
 # Generate with inline preview
-splatworld-agent batch "modern kitchen" --inline
+splatworld batch "modern kitchen" --inline
 
 # Interactive review with inline preview
-splatworld-agent review --inline
+splatworld review --inline
 ```
 
 ### How It Works
@@ -124,10 +124,10 @@ The `review` command lets you interactively rate unrated images one at a time.
 
 ```bash
 # Default: shows file paths, rate by command
-splatworld-agent review
+splatworld review
 
 # With inline preview (supported terminals only)
-splatworld-agent review --inline
+splatworld review --inline
 ```
 
 ### Rating Options
@@ -146,7 +146,7 @@ During interactive review, use these ratings:
 ### Example Session
 
 ```
-$ splatworld-agent review
+$ splatworld review
 
 Reviewing 4 unrated images...
 
@@ -171,38 +171,38 @@ For fast rating without interactive mode, use the `rate` and `brate` commands.
 ### Single Image Rating
 
 ```bash
-splatworld-agent rate <number> <rating>
+splatworld rate <number> <rating>
 ```
 
 Examples:
 ```bash
-splatworld-agent rate 1 ++    # Love image 1
-splatworld-agent rate 3 -     # Meh for image 3
-splatworld-agent rate 2 --    # Hate image 2
+splatworld rate 1 ++    # Love image 1
+splatworld rate 3 -     # Meh for image 3
+splatworld rate 2 --    # Hate image 2
 ```
 
 ### Multiple Images, Same Rating
 
 ```bash
-splatworld-agent rate <numbers...> <rating>
+splatworld rate <numbers...> <rating>
 ```
 
 Examples:
 ```bash
-splatworld-agent rate 1 2 3 +      # Like images 1, 2, and 3
-splatworld-agent rate 4 5 6 7 --   # Hate images 4, 5, 6, and 7
+splatworld rate 1 2 3 +      # Like images 1, 2, and 3
+splatworld rate 4 5 6 7 --   # Hate images 4, 5, 6, and 7
 ```
 
 ### Batch Rating (Different Ratings)
 
 ```bash
-splatworld-agent brate <number> <rating> [<number> <rating>...]
+splatworld brate <number> <rating> [<number> <rating>...]
 ```
 
 Examples:
 ```bash
-splatworld-agent brate 1 ++ 2 - 3 +     # Rate 3 images differently
-splatworld-agent brate 1 ++ 2 ++ 3 - 4 --   # Rate 4 images
+splatworld brate 1 ++ 2 - 3 +     # Rate 3 images differently
+splatworld brate 1 ++ 2 ++ 3 - 4 --   # Rate 4 images
 ```
 
 ### Rating Scale Reference
@@ -221,7 +221,7 @@ splatworld-agent brate 1 ++ 2 ++ 3 - 4 --   # Rate 4 images
 After rating images, run the `learn` command to update your taste profile:
 
 ```bash
-splatworld-agent learn
+splatworld learn
 ```
 
 This analyzes your feedback history and updates your preference vectors. Future generations will incorporate what you've learned from your ratings.
@@ -234,12 +234,12 @@ This analyzes your feedback history and updates your preference vectors. Future 
 
 | Task | Command |
 |------|---------|
-| Generate images | `splatworld-agent batch "prompt"` |
-| Generate with inline preview | `splatworld-agent batch "prompt" --inline` |
+| Generate images | `splatworld batch "prompt"` |
+| Generate with inline preview | `splatworld batch "prompt" --inline` |
 | View images (default) | `open .splatworld/generations/` |
-| Rate single image | `splatworld-agent rate 1 ++` |
-| Rate multiple same | `splatworld-agent rate 1 2 3 +` |
-| Rate multiple different | `splatworld-agent brate 1 ++ 2 - 3 +` |
-| Interactive review | `splatworld-agent review` |
-| Interactive with preview | `splatworld-agent review --inline` |
-| Update taste profile | `splatworld-agent learn` |
+| Rate single image | `splatworld rate 1 ++` |
+| Rate multiple same | `splatworld rate 1 2 3 +` |
+| Rate multiple different | `splatworld brate 1 ++ 2 - 3 +` |
+| Interactive review | `splatworld review` |
+| Interactive with preview | `splatworld review --inline` |
+| Update taste profile | `splatworld learn` |

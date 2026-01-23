@@ -28,24 +28,24 @@ Feedback is used to learn patterns and improve future generations.
 Parse the user's feedback:
 
 ```bash
-splatworld-agent feedback "<feedback_text>" [--generation <id>]
+splatworld feedback "<feedback_text>" [--generation <id>]
 ```
 
 After recording feedback:
 1. Confirm what was recorded
-2. If 10+ unprocessed feedback entries, suggest: "Consider running `/splatworld-agent:learn` to update your taste profile."
+2. If 10+ unprocessed feedback entries, suggest: "Consider running `/splatworld:learn` to update your taste profile."
 
 <examples>
 User: "love it"
-→ splatworld-agent feedback "++"
+→ splatworld feedback "++"
 
 User: "too dark and cluttered"
-→ splatworld-agent feedback "too dark and cluttered"
+→ splatworld feedback "too dark and cluttered"
 
 User: "the lighting is perfect but composition feels off"
-→ splatworld-agent feedback "the lighting is perfect but composition feels off"
+→ splatworld feedback "the lighting is perfect but composition feels off"
 
 User: "--" (or "hate it")
-→ splatworld-agent feedback "--"
+→ splatworld feedback "--"
 </examples>
 </execution>

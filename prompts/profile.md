@@ -19,22 +19,22 @@ Determine what the user wants:
 
 For viewing:
 ```bash
-splatworld-agent profile
+splatworld profile
 ```
 
 For JSON output:
 ```bash
-splatworld-agent profile --json
+splatworld profile --json
 ```
 
 For editing:
 ```bash
-splatworld-agent profile --edit
+splatworld profile --edit
 ```
 
 After displaying, explain:
 - What each section means
 - How confidence scores work (0-1, higher = more consistent pattern)
 - How to manually adjust preferences if desired
-- That preferences are automatically updated when running /splatworld-agent:learn
+- That preferences are automatically updated when running /splatworld:learn
 </execution>

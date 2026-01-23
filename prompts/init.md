@@ -13,13 +13,13 @@ Creates .splatworld/ with an empty taste profile ready for learning.
 Run the following command:
 
 ```bash
-splatworld-agent init
+splatworld init
 ```
 
 After initialization, explain to the user:
 - Their .splatworld/ directory has been created
 - Their taste profile starts empty
-- They should use `/splatworld-agent:generate` to create content
-- They should use `/splatworld-agent:feedback` to teach the agent their preferences
+- They should use `/splatworld:generate` to create content
+- They should use `/splatworld:feedback` to teach the agent their preferences
 - Over time, the agent will learn and enhance their prompts automatically
 </execution>

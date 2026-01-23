@@ -11,12 +11,12 @@ Shows recent generations with their prompts and feedback.
 <execution>
 For listing recent:
 ```bash
-splatworld-agent history [--limit <n>]
+splatworld history [--limit <n>]
 ```
 
 For viewing specific generation:
 ```bash
-splatworld-agent history <generation_id>
+splatworld history <generation_id>
 ```
 
 After displaying:

@@ -16,7 +16,7 @@ Offers choice: rate unrated images first, or start new generations.
 
 <execution>
 ```bash
-splatworld-agent resume
+splatworld resume
 ```
 
 If unrated images exist:
