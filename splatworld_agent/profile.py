@@ -876,6 +876,30 @@ class ProfileManager:
         registry = self.get_image_registry()
         return registry.get(ref)
 
+    def get_generation_by_number(self, image_number: int) -> Optional[Generation]:
+        """Get a generation by its sequential image number.
+
+        Looks up the generation_id in the registry's reverse mapping
+        (number -> id) and returns the full Generation object.
+
+        Args:
+            image_number: The sequential image number
+
+        Returns:
+            The Generation object, or None if not found
+        """
+        registry = self.get_image_registry()
+
+        # Build reverse mapping: number -> id
+        number_to_id = {v: k for k, v in registry.items()}
+
+        # Look up generation_id by number
+        generation_id = number_to_id.get(image_number)
+        if not generation_id:
+            return None
+
+        return self.get_generation(generation_id)
+
     # Flat file structure methods (FILE-02 Expand phase)
 
     @property
