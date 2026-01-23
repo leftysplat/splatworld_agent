@@ -10,7 +10,9 @@ from datetime import datetime
 from pathlib import Path
 import json
 import re
+import shutil
 import sys
+from typing import Optional
 import uuid
 
 from rich.console import Console
@@ -99,6 +101,115 @@ def init(path: str):
         f"Your taste profile is empty. Generate some content and provide feedback to teach it your preferences.",
         title="SplatWorld Agent",
     ))
+
+
+@main.command("migrate-data")
+@click.option("--from-dir", type=click.Path(exists=True), help="Source directory to migrate from")
+@click.option("--dry-run", is_flag=True, help="Show what would be migrated without copying")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
+def migrate_data(from_dir: Optional[str], dry_run: bool, yes: bool):
+    """Migrate user data from old .splatworld_agent/ folder.
+
+    Detects old installation in current directory or specified path
+    and migrates profile, feedback, and session data to .splatworld/
+
+    Files migrated:
+    - profile.json (taste profile)
+    - feedback.jsonl (rating history)
+    - sessions.jsonl (session history)
+    - prompt_history.jsonl (prompt tracking)
+    - image_metadata/ (per-image metadata)
+    - metadata/image_registry.json (number registry)
+    """
+    # Find old directory
+    if from_dir:
+        old_path = Path(from_dir)
+        if old_path.name != ".splatworld_agent":
+            old_path = old_path / ".splatworld_agent"
+    else:
+        # Auto-detect in current directory
+        old_path = Path.cwd() / ".splatworld_agent"
+
+    if not old_path.exists():
+        console.print(f"[yellow]No old data found at: {old_path}[/yellow]")
+        console.print("[dim]Specify --from-dir to migrate from another location[/dim]")
+        return
+
+    new_path = Path.cwd() / ".splatworld"
+
+    # Count files to migrate
+    files_to_migrate = list(old_path.rglob("*"))
+    file_count = len([f for f in files_to_migrate if f.is_file()])
+
+    console.print(f"\n[bold]Found old SplatWorld data:[/bold] {old_path}")
+    console.print(f"[dim]Files to migrate: {file_count}[/dim]\n")
+
+    # Show key files
+    key_files = ["profile.json", "feedback.jsonl", "sessions.jsonl", "prompt_history.jsonl"]
+    for key_file in key_files:
+        key_path = old_path / key_file
+        if key_path.exists():
+            size = key_path.stat().st_size
+            console.print(f"  [green]✓[/green] {key_file} ({size} bytes)")
+        else:
+            console.print(f"  [dim]- {key_file} (not found)[/dim]")
+
+    # Check for image metadata
+    metadata_dir = old_path / "image_metadata"
+    if metadata_dir.exists():
+        meta_count = len(list(metadata_dir.glob("*.json")))
+        console.print(f"  [green]✓[/green] image_metadata/ ({meta_count} files)")
+
+    if dry_run:
+        console.print("\n[yellow]Dry run - no changes made[/yellow]")
+        console.print(f"[dim]Would migrate to: {new_path}[/dim]")
+        return
+
+    # Check destination
+    if new_path.exists() and (new_path / "profile.json").exists():
+        console.print(f"\n[yellow]Warning:[/yellow] {new_path} already has data")
+
+        # Compare profile timestamps
+        old_profile = old_path / "profile.json"
+        new_profile = new_path / "profile.json"
+        if old_profile.exists() and new_profile.exists():
+            old_mtime = old_profile.stat().st_mtime
+            new_mtime = new_profile.stat().st_mtime
+            if old_mtime > new_mtime:
+                console.print("[dim]Old data is NEWER - migration recommended[/dim]")
+            else:
+                console.print("[dim]Existing data is NEWER - migration may overwrite[/dim]")
+
+        if not yes:
+            from rich.prompt import Confirm
+            if not Confirm.ask("Merge old data into existing? (backs up existing first)"):
+                console.print("Migration cancelled")
+                return
+
+        # Backup existing
+        import datetime as dt
+        timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = new_path.parent / f".splatworld.backup-{timestamp}"
+        shutil.copytree(new_path, backup_path)
+        console.print(f"[dim]Backed up existing to: {backup_path}[/dim]")
+
+    # Confirm migration
+    if not yes:
+        from rich.prompt import Confirm
+        if not Confirm.ask(f"Migrate from {old_path} to {new_path}?"):
+            console.print("Migration cancelled")
+            return
+
+    # Perform migration - preserve timestamps with copy2
+    console.print("\n[bold]Migrating files...[/bold]")
+    new_path.mkdir(parents=True, exist_ok=True)
+
+    # Use shutil.copytree with dirs_exist_ok for merging
+    shutil.copytree(old_path, new_path, dirs_exist_ok=True, copy_function=shutil.copy2)
+
+    console.print(f"\n[green]Migration complete![/green]")
+    console.print(f"\n[dim]Old data preserved at: {old_path}[/dim]")
+    console.print(f"[dim]To delete old folder: rm -rf \"{old_path}\"[/dim]")
 
 
 @main.command("setup-keys")
