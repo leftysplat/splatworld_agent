@@ -3343,9 +3343,9 @@ def _run_direct_simple(
     no_download: bool,
     json_output: bool,
 ):
-    """Run direct pipeline without TUI (simple Rich progress).
+    """Run direct pipeline with pretty line-by-line progress display.
 
-    Used when --no-tui or --json is specified. Provides simple text output
+    Used when --no-tui or --json is specified. Provides beautiful text output
     that works in non-interactive environments like Claude's bash execution.
 
     Progress is ALWAYS printed to stderr so user sees real-time updates.
@@ -3358,14 +3358,14 @@ def _run_direct_simple(
     from datetime import datetime
     import uuid
 
-    from rich.console import Console
     from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
     from splatworld_agent.learning import enhance_prompt, PromptAdapter
     from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
     from splatworld_agent.tui.results import GenerateResult
-
-    # Progress console writes to stderr (always visible, doesn't interfere with JSON)
-    progress_console = Console(stderr=True, force_terminal=True)
+    from splatworld_agent.tui.simple_progress import (
+        print_header, print_stage_start, print_stage_progress,
+        print_stage_complete, print_error, print_partial_success, print_result
+    )
 
     # Initialize tracking variables
     image_number = None
@@ -3388,9 +3388,12 @@ def _run_direct_simple(
     adapter = PromptAdapter(api_key=config.api_keys.anthropic)
     marble = MarbleClient(api_key=config.api_keys.marble)
 
+    # Print header
+    print_header(prompt_text, gen_name)
+
     try:
         # Stage 1/3: Enhance prompt
-        progress_console.print("[dim]Stage 1/3:[/dim] Enhancing prompt with taste profile...")
+        print_stage_start("Enhance", "🔮", "analyzing taste profile...")
 
         try:
             variant = adapter.generate_variant(prompt_text, profile)
@@ -3403,16 +3406,17 @@ def _run_direct_simple(
             reasoning = None
             modifications = []
 
-        progress_console.print("[green]✓[/green] Prompt enhanced")
+        print_stage_complete("Enhance", "🔮", "complete")
 
         # Stage 2/3: Generate image
-        progress_console.print(f"[dim]Stage 2/3:[/dim] Generating image with {gen_name}...")
+        print_stage_start("Generate", "🖼️ ", f"connecting to {gen_name}...")
 
         try:
+            print_stage_progress("Generate", "🖼️ ", 30, "generating...")
             image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
             gen_name = gen_metadata["provider"]
         except ProviderFailureError as e:
-            progress_console.print(f"[red]✗[/red] Provider {e.provider} failed")
+            print_error(f"Provider {e.provider} failed: {e.original_error}")
             provider_manager.close()
             marble.close()
             return GenerateResult(
@@ -3428,17 +3432,31 @@ def _run_direct_simple(
         with open(flat_image_path, "wb") as f:
             f.write(image_bytes)
 
-        progress_console.print(f"[green]✓[/green] Image saved: generated_images/{image_number}.png")
+        print_stage_complete("Generate", "🖼️ ", f"saved → generated_images/{image_number}.png")
 
         # Stage 3/3: Convert to 3D
-        progress_console.print("[dim]Stage 3/3:[/dim] Converting to 3D with Marble...")
+        print_stage_start("Convert", "🌐", "uploading to Marble...")
 
         try:
+            print_stage_progress("Convert", "🌐", 25, "processing...")
+
+            def on_marble_progress(status, description):
+                # Map Marble status to progress percentage
+                progress_map = {
+                    "pending": 30,
+                    "processing": 50,
+                    "converting": 70,
+                    "finalizing": 90,
+                }
+                pct = progress_map.get(status, 50)
+                print_stage_progress("Convert", "🌐", pct, description or status)
+
             marble_result = marble.generate_and_wait(
                 image_base64=base64.b64encode(image_bytes).decode(),
                 mime_type="image/png",
                 display_name=f"Image {image_number}",
                 is_panorama=True,
+                on_progress=on_marble_progress,
             )
         except (MarbleTimeoutError, MarbleConversionError) as e:
             # Image was saved - report partial success
@@ -3459,6 +3477,8 @@ def _run_direct_simple(
             })
             manager.register_image(gen_id, image_number)
 
+            print_partial_success(f"generated_images/{image_number}.png", str(e))
+
             provider_manager.close()
             marble.close()
             return GenerateResult(
@@ -3473,9 +3493,7 @@ def _run_direct_simple(
                 error=f"3D conversion failed: {e}",
             )
 
-        if marble_result.viewer_url:
-            progress_console.print(f"[green]✓[/green] 3D conversion complete")
-            progress_console.print(f"[bold cyan]Viewer:[/bold cyan] {marble_result.viewer_url}")
+        print_stage_complete("Convert", "🌐", "complete")
 
         # Save full metadata
         gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
@@ -3504,9 +3522,17 @@ def _run_direct_simple(
             try:
                 marble.download_file(marble_result.splat_url, splat_path_obj)
                 splat_path = str(splat_path_obj)
-                progress_console.print(f"[green]✓[/green] Splat saved: splats/{image_number}.spz")
             except Exception:
                 splat_path = None
+
+        # Print final result
+        print_result(
+            viewer_url=marble_result.viewer_url,
+            image_path=f"generated_images/{image_number}.png",
+            splat_path=f"splats/{image_number}.spz" if splat_path else None,
+            enhanced_prompt=enhanced_prompt,
+            reasoning=reasoning,
+        )
 
         provider_manager.close()
         marble.close()
@@ -3523,6 +3549,7 @@ def _run_direct_simple(
         )
 
     except Exception as e:
+        print_error(str(e))
         provider_manager.close()
         marble.close()
         return GenerateResult(

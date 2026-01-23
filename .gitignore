@@ -68,3 +68,7 @@ generated_images/
 
 # Project planning (local only)
 PROJECT.md
+
+# Development notes (local only)
+note.md
+demo_tui.py
