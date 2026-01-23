@@ -2867,10 +2867,17 @@ def resume_work():
 
 
 @main.command()
-@click.option("--open", "open_id", help="Open viewer URL for a specific generation ID")
+@click.argument("image_nums", nargs=-1, type=int, required=False)
+@click.option("--open", "open_num", type=int, help="Open viewer URL for a specific image number")
 @click.pass_context
-def splats(ctx: click.Context, open_id: str = None) -> None:
-    """List all converted splats with their World Labs viewer URLs."""
+def splats(ctx: click.Context, image_nums: tuple, open_num: int = None) -> None:
+    """List all converted splats with their World Labs viewer URLs.
+
+    Usage:
+      splats                      List all splats
+      splats 1 3                  Show splats for images 1 and 3
+      splats --open 1             Open viewer for image 1
+    """
     project_dir = get_project_dir()
     if not project_dir:
         console.print("[red]Error: Not in a SplatWorld project.[/red]")
@@ -2879,44 +2886,66 @@ def splats(ctx: click.Context, open_id: str = None) -> None:
     manager = ProfileManager(project_dir.parent)
     generations = manager.get_all_generations()
 
-    # Filter to only generations with viewer_url
-    splat_gens = [g for g in generations if g.viewer_url]
+    # Get image registry for number lookups
+    registry = manager.get_image_registry()
+    # Build reverse mapping: gen_id -> image_number
+    id_to_number = {gen_id: num for gen_id, num in registry.items()}
+
+    # Filter to only generations with viewer_url and enrich with image numbers
+    splat_gens = []
+    for g in generations:
+        if g.viewer_url:
+            img_num = id_to_number.get(g.id) or g.metadata.get("image_number")
+            splat_gens.append((g, img_num))
 
     if not splat_gens:
         console.print("[yellow]No converted splats found.[/yellow]")
         console.print("[dim]Run 'splatworld convert' to create 3D splats from loved images.[/dim]")
         return
 
-    if open_id:
-        # Find the generation and open its URL
-        gen = next((g for g in splat_gens if g.id == open_id or g.id.startswith(open_id)), None)
-        if not gen:
-            console.print(f"[red]No splat found with ID: {open_id}[/red]")
+    # Handle --open option
+    if open_num:
+        # Find the generation by image number
+        gen_tuple = next((t for t in splat_gens if t[1] == open_num), None)
+        if not gen_tuple:
+            console.print(f"[red]No splat found for Image {open_num}[/red]")
             return
+        gen, _ = gen_tuple
         import webbrowser
-        console.print(f"[blue]Opening viewer for {gen.id}...[/blue]")
+        console.print(f"[blue]Opening viewer for Image {open_num}...[/blue]")
         webbrowser.open(gen.viewer_url)
         return
+
+    # Filter to specific image numbers if provided
+    if image_nums:
+        filtered = [(g, n) for g, n in splat_gens if n in image_nums]
+        if not filtered:
+            console.print(f"[yellow]No splats found for images: {image_nums}[/yellow]")
+            return
+        splat_gens = filtered
 
     # List all splats
     console.print(f"\n[bold]Converted Splats ({len(splat_gens)})[/bold]\n")
 
-    for gen in sorted(splat_gens, key=lambda g: g.timestamp, reverse=True):
-        console.print(f"[cyan]{gen.id}[/cyan]")
+    for gen, img_num in sorted(splat_gens, key=lambda t: t[0].timestamp, reverse=True):
+        console.print(f"[cyan]Image {img_num or '?'}[/cyan]")
         console.print(f"  Prompt: {gen.prompt[:60]}{'...' if len(gen.prompt) > 60 else ''}")
         console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
         console.print()
 
-    console.print("[dim]Tip: Use --open <id> to open a viewer directly, e.g.: splatworld splats --open abc123[/dim]")
+    console.print("[dim]Tip: Use --open N to open a viewer directly, e.g.: splatworld splats --open 1[/dim]")
 
 
 @main.command("download-splats")
+@click.argument("image_nums", nargs=-1, type=int, required=False)
 @click.option("--all", "download_all", is_flag=True, help="Download all missing splats without confirmation")
-def download_splats(download_all: bool):
+def download_splats(image_nums: tuple, download_all: bool):
     """Download splat files that haven't been downloaded yet.
 
-    Finds all converted generations (with viewer_url) that don't have
-    local splat files and downloads them from WorldLabs.
+    Usage:
+      download-splats                  List missing splats, prompt to download
+      download-splats 1 3              Download splats for images 1 and 3
+      download-splats --all            Download all missing splats
 
     Note: Downloading splats may require a premium WorldLabs account.
     """
@@ -2934,6 +2963,11 @@ def download_splats(download_all: bool):
     manager = ProfileManager(project_dir.parent)
     generations = manager.get_all_generations()
 
+    # Get image registry for number lookups
+    registry = manager.get_image_registry()
+    # Build reverse mapping: gen_id -> image_number
+    id_to_number = {gen_id: num for gen_id, num in registry.items()}
+
     # Find generations with splat_url but missing local splat file
     missing_splats = []
     for gen in generations:
@@ -2941,7 +2975,22 @@ def download_splats(download_all: bool):
             # Check if local splat file exists
             if gen.splat_path and Path(gen.splat_path).exists():
                 continue  # Already have local file
-            missing_splats.append(gen)
+            # Get image number
+            img_num = id_to_number.get(gen.id) or gen.metadata.get("image_number")
+            missing_splats.append((gen, img_num))
+
+    # Filter to specific image numbers if provided
+    if image_nums:
+        filtered = [(g, n) for g, n in missing_splats if n in image_nums]
+        # Also check if requested numbers exist but have splat_url
+        for img_num in image_nums:
+            gen = manager.get_generation_by_number(img_num)
+            if gen and gen.splat_url and not any(t[1] == img_num for t in filtered):
+                # Check if it's actually downloaded
+                splat_path = manager.get_flat_splat_path(img_num)
+                if not splat_path.exists():
+                    filtered.append((gen, img_num))
+        missing_splats = filtered
 
     if not missing_splats:
         console.print("[green]All splats are downloaded![/green]")
@@ -2950,13 +2999,14 @@ def download_splats(download_all: bool):
 
     console.print(f"\n[bold]Missing Splats ({len(missing_splats)})[/bold]\n")
 
-    for gen in missing_splats:
-        console.print(f"[cyan]{gen.id}[/cyan]")
+    for gen, img_num in missing_splats:
+        console.print(f"[cyan]Image {img_num or '?'}[/cyan]")
         console.print(f"  Prompt: {gen.prompt[:50]}{'...' if len(gen.prompt) > 50 else ''}")
         console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
         console.print()
 
-    if not download_all:
+    # If specific images were requested, proceed without confirmation
+    if not download_all and not image_nums:
         try:
             confirm = input(f"\nDownload {len(missing_splats)} splat file(s)? (y/N): ").strip().lower()
         except (KeyboardInterrupt, EOFError):
@@ -2982,11 +3032,11 @@ def download_splats(download_all: bool):
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            for i, gen in enumerate(missing_splats):
-                task = progress.add_task(f"Downloading {i+1}/{len(missing_splats)}: {gen.id}...", total=None)
+            for i, (gen, img_num) in enumerate(missing_splats):
+                task = progress.add_task(f"Downloading {i+1}/{len(missing_splats)}: Image {img_num or '?'}...", total=None)
 
-                # Save splat to visible splats directory
-                splat_path = manager.splats_dir / f"{gen.id}.spz"
+                # Save splat to visible splats directory using image number (flat: N.spz)
+                splat_path = manager.get_flat_splat_path(img_num) if img_num else manager.splats_dir / f"{gen.id}.spz"
 
                 try:
                     marble.download_file(gen.splat_url, splat_path)
@@ -3002,16 +3052,23 @@ def download_splats(download_all: bool):
                             with open(metadata_path, "w") as f:
                                 json.dump(gen_data, f, indent=2)
 
+                    # Also update flat metadata
+                    if img_num:
+                        flat_metadata = manager.load_image_metadata(img_num)
+                        if flat_metadata:
+                            flat_metadata["splat_path"] = str(splat_path)
+                            manager.save_image_metadata(img_num, flat_metadata)
+
                     downloaded += 1
-                    progress.update(task, description=f"[green]Downloaded: {gen.id}[/green]")
+                    progress.update(task, description=f"[green]Downloaded: Image {img_num or '?'}[/green]")
 
                 except Exception as e:
                     failed += 1
                     error_msg = str(e)
                     if "403" in error_msg or "Forbidden" in error_msg:
-                        progress.update(task, description=f"[red]{gen.id}: Premium account required[/red]")
+                        progress.update(task, description=f"[red]Image {img_num or '?'}: Premium account required[/red]")
                     else:
-                        progress.update(task, description=f"[red]{gen.id}: {error_msg}[/red]")
+                        progress.update(task, description=f"[red]Image {img_num or '?'}: {error_msg}[/red]")
 
     finally:
         marble.close()
