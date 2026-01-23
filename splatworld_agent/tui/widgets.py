@@ -6,7 +6,8 @@ with elapsed time tracking and status icons.
 from time import perf_counter
 from typing import Optional
 
-from textual.widgets import Static
+from textual.reactive import reactive
+from textual.widgets import RichLog, Static
 
 
 class StageProgress(Static):
@@ -112,3 +113,37 @@ class StageProgress(Static):
             lines.append(line)
 
         return "\n".join(lines)
+
+
+class ResourcePanel(Static):
+    """Live resource counter display with credit warning.
+
+    Displays:
+    - API calls counter: "API calls: 3"
+    - Credit usage: "Credits: 5/10 (50%)" or warning at 75%+
+
+    Requirements: RES-01, RES-02
+    """
+
+    api_calls = reactive(0)
+    credits_used = reactive(0)
+    credits_limit: reactive[Optional[int]] = reactive(None)
+
+    WARNING_THRESHOLD = 75.0
+
+    def render(self) -> str:
+        parts = [f"API calls: {self.api_calls}"]
+
+        # Credit display with optional warning
+        if self.credits_limit is not None and self.credits_limit > 0:
+            pct = (self.credits_used / self.credits_limit) * 100
+            credit_str = f"{self.credits_used}/{self.credits_limit} ({pct:.0f}%)"
+
+            if pct >= self.WARNING_THRESHOLD:
+                parts.append(f"[yellow bold]Credits: {credit_str} - Consider Gemini[/yellow bold]")
+            else:
+                parts.append(f"Credits: {credit_str}")
+        elif self.credits_used > 0:
+            parts.append(f"Credits: {self.credits_used}")
+
+        return " | ".join(parts)
