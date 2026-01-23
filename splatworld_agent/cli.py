@@ -2805,6 +2805,67 @@ def update():
 
 
 @main.command()
+def version():
+    """Show SplatWorld Agent version information.
+
+    Displays version, install location, and git commit info if available.
+    """
+    import subprocess
+
+    # Find the package directory
+    package_dir = Path(__file__).parent.parent
+    git_dir = package_dir / ".git"
+
+    # Build version info
+    lines = [
+        f"[bold]SplatWorld Agent[/bold] v{__version__}",
+        f"[dim]Location: {package_dir}[/dim]",
+    ]
+
+    # Add git info if available
+    if git_dir.exists():
+        try:
+            # Get current commit
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=package_dir,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                commit_hash = result.stdout.strip()
+
+                # Get commit date
+                result = subprocess.run(
+                    ["git", "log", "-1", "--format=%ci", "HEAD"],
+                    cwd=package_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                commit_date = result.stdout.strip()[:10] if result.returncode == 0 else "unknown"
+
+                lines.append(f"[dim]Commit: {commit_hash} ({commit_date})[/dim]")
+
+            # Check if there are uncommitted changes
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=package_dir,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                lines.append("[yellow]Local modifications present[/yellow]")
+
+        except (subprocess.TimeoutExpired, Exception):
+            pass  # Git info is optional
+
+    console.print("\n".join(lines))
+
+
+@main.command()
 def help():
     """Show help and available commands."""
     console.print(Panel.fit(
