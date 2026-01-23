@@ -33,6 +33,7 @@ dependencies = [
     "anthropic>=0.27.0",
     "term-image>=0.7.2",
     "Pillow",
+    "tenacity>=9.0.0",
 ]
 
 [project.optional-dependencies]

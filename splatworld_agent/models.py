@@ -573,6 +573,57 @@ class Session:
 
 
 @dataclass
+class ProviderState:
+    """Session-scoped provider state for image generation.
+
+    Tracks provider selection and usage for IGEN-01 through IGEN-04:
+    - IGEN-01: current_provider defaults to "nano"
+    - IGEN-03: usage_percentage triggers warning at 75%
+    - IGEN-04: switch_provider() enables mid-session switching
+    """
+
+    current_provider: str = "nano"  # IGEN-01: Nano is default
+    credits_used: int = 0
+    credits_limit: Optional[int] = None  # None = unlimited, set by user
+    generation_count: int = 0
+    nano_failures: int = 0
+    provider_switches: list = field(default_factory=list)  # Track switch history
+
+    @property
+    def usage_percentage(self) -> float:
+        """Calculate credit usage percentage (0.0 if unlimited)."""
+        if self.credits_limit is None or self.credits_limit == 0:
+            return 0.0
+        return (self.credits_used / self.credits_limit) * 100
+
+    @property
+    def should_warn(self) -> bool:
+        """IGEN-03: Return True if at or above 75% credit usage."""
+        return self.usage_percentage >= 75.0
+
+    def to_dict(self) -> dict:
+        return {
+            "current_provider": self.current_provider,
+            "credits_used": self.credits_used,
+            "credits_limit": self.credits_limit,
+            "generation_count": self.generation_count,
+            "nano_failures": self.nano_failures,
+            "provider_switches": self.provider_switches,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProviderState":
+        return cls(
+            current_provider=data.get("current_provider", "nano"),
+            credits_used=data.get("credits_used", 0),
+            credits_limit=data.get("credits_limit"),
+            generation_count=data.get("generation_count", 0),
+            nano_failures=data.get("nano_failures", 0),
+            provider_switches=data.get("provider_switches", []),
+        )
+
+
+@dataclass
 class PromptHistoryEntry:
     """A prompt variant with its rating and lineage for training history.
 
