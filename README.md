@@ -25,22 +25,25 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
   - Nano Banana Pro or Gemini (image generation)
   - Anthropic (prompt enhancement)
 
-### Quick Install
+### Option 1: Plugin System (Recommended)
 
-```bash
-# One-line install (installs to ~/.claude/splatworld)
-curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld/main/install.sh | bash
+Install as a Claude Code plugin:
+
+```
+/plugin install splatworld --from https://github.com/leftyfl1p/splatworld
 ```
 
-Or clone and run:
+This installs the plugin and makes all `/splatworld:*` commands available immediately.
+
+### Option 2: Manual Install
+
+Clone to the Claude plugins directory:
+
 ```bash
-git clone https://github.com/leftysplat/splatworld.git && (cd splatworld && ./install.sh)
+git clone https://github.com/leftyfl1p/splatworld.git ~/.claude/splatworld
 ```
 
-The installer will:
-1. Install to `~/.claude/splatworld/` (like GSD)
-2. Set up commands at `~/.claude/commands/splatworld/`
-3. Available from **any project directory**
+Restart Claude Code. Commands will be available as `/splatworld:*`.
 
 ### Updating
 
@@ -49,7 +52,7 @@ Once installed, update from within Claude Code:
 /splatworld:update
 ```
 
-This pulls the latest changes from the repository. Since commands are symlinked, updates are immediate.
+This pulls the latest changes from the repository.
 
 ### Configure API Keys
 
