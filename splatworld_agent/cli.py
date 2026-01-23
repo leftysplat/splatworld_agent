@@ -731,7 +731,8 @@ def batch_rate(ratings_input: tuple):
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
 @click.option("--mode", "-m", type=click.Choice(["explore", "refine"]), default=None, help="Exploration mode (explore=diverse, refine=targeted)")
 @click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
-def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inline: bool):
+@click.option("--single-cycle", is_flag=True, help="Run one cycle without interactive pause (non-interactive mode)")
+def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inline: bool, single_cycle: bool):
     """Generate a batch of images for review.
 
     Generates N images, then lets you review and rate them before
@@ -771,6 +772,10 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
         sys.exit(1)
 
     gen_name = generator or config.defaults.image_generator
+
+    # Single-cycle mode: force exactly one cycle, no interactive pause
+    if single_cycle:
+        cycles = 1
 
     # Check calibration status
     profile = manager.load_profile()
@@ -954,11 +959,13 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 @click.option("--list", "list_only", is_flag=True, help="List unrated images without prompting for ratings")
 @click.option("--rate", "rate_value", help="Rate a generation (++/+/-/--)")
 @click.option("--generation", "-g", "rate_gen_id", help="Generation ID to rate (use with --rate)")
-def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool, inline: bool, list_only: bool, rate_value: str, rate_gen_id: str):
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON (for skill file parsing)")
+def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bool, inline: bool, list_only: bool, rate_value: str, rate_gen_id: str, json_output: bool):
     """Review and rate generated images.
 
     Usage:
       review --list                 List unrated images
+      review --list --json          List unrated images as JSON (for skill files)
       review --rate ++ -g <id>      Rate a specific generation
       review --all                  Interactive review (terminal only)
     """
