@@ -74,6 +74,17 @@ Convert loved images to 3D splats.
 Usage: `/splatworld:convert`
 Usage: `/splatworld:convert --dry-run`
 
+## Direct Mode
+
+**`/splatworld:direct <prompt>`**
+Generate complete 3D world from prompt.
+
+- Executes full pipeline: enhance -> generate -> convert to 3D
+- Returns viewer URL for immediate viewing
+- Use `--provider gemini` to override default provider
+
+Usage: `/splatworld:direct "cozy cabin in mountains"`
+
 ## Single Generation
 
 **`/splatworld:generate <prompt>`**
