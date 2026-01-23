@@ -3,9 +3,9 @@
 # SplatWorld Agent Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld_agent/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/leftysplat/splatworld/main/install.sh | bash
 #   OR
-#   git clone ... && cd splatworld_agent && ./install.sh
+#   git clone ... && cd splatworld && ./install.sh
 #
 
 set -e
@@ -37,7 +37,7 @@ DIM='\033[2m'
 RESET='\033[0m'
 
 # Default install location (inside ~/.claude like GSD)
-DEFAULT_INSTALL_DIR="$HOME/.claude/splatworld-agent"
+DEFAULT_INSTALL_DIR="$HOME/.claude/splatworld"
 CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 
 echo ""
@@ -90,12 +90,12 @@ detect_mode() {
 
 # Prompt for install location
 prompt_location() {
-    # Always install to ~/.claude/splatworld-agent for global access
+    # Always install to ~/.claude/splatworld for global access
     INSTALL_DIR="$DEFAULT_INSTALL_DIR"
     echo -e "  ${DIM}Installing to: $INSTALL_DIR${RESET}"
 }
 
-# Clone or copy the repo to ~/.claude/splatworld-agent
+# Clone or copy the repo to ~/.claude/splatworld
 install_repo() {
     local SOURCE_DIR=""
 
@@ -103,8 +103,8 @@ install_repo() {
         # Clone to temp location first, then copy
         echo -e "  Cloning repository..."
         TEMP_DIR=$(mktemp -d)
-        git clone --quiet https://github.com/leftysplat/splatworld_agent.git "$TEMP_DIR/splatworld_agent"
-        SOURCE_DIR="$TEMP_DIR/splatworld_agent"
+        git clone --quiet https://github.com/leftysplat/splatworld.git "$TEMP_DIR/splatworld"
+        SOURCE_DIR="$TEMP_DIR/splatworld"
         echo -e "  ${GREEN}✓${RESET} Cloned repository"
     else
         # Use current repo as source
@@ -153,7 +153,7 @@ install_python() {
     fi
 
     # Uninstall any existing installation first (avoids conflicts)
-    $pip_cmd uninstall -y splatworld-agent 2>/dev/null || true
+    $pip_cmd uninstall -y splatworld 2>/dev/null || true
 
     # Try with --user flag for permission issues
     if $pip_cmd install . --user --quiet 2>/dev/null; then
@@ -174,15 +174,21 @@ setup_claude() {
     # Create commands directory if needed
     mkdir -p "$CLAUDE_COMMANDS_DIR"
 
-    # Remove existing (file or symlink)
+    # Remove old splatworld-agent symlink if it exists (migration cleanup)
     if [ -e "$CLAUDE_COMMANDS_DIR/splatworld-agent" ] || [ -L "$CLAUDE_COMMANDS_DIR/splatworld-agent" ]; then
         rm -rf "$CLAUDE_COMMANDS_DIR/splatworld-agent"
+        echo -e "  ${DIM}Removed old splatworld-agent symlink${RESET}"
+    fi
+
+    # Remove existing (file or symlink)
+    if [ -e "$CLAUDE_COMMANDS_DIR/splatworld" ] || [ -L "$CLAUDE_COMMANDS_DIR/splatworld" ]; then
+        rm -rf "$CLAUDE_COMMANDS_DIR/splatworld"
     fi
 
     # Create symlink
-    ln -s "$INSTALL_DIR/commands" "$CLAUDE_COMMANDS_DIR/splatworld-agent"
+    ln -s "$INSTALL_DIR/commands" "$CLAUDE_COMMANDS_DIR/splatworld"
 
-    echo -e "  ${GREEN}✓${RESET} Linked commands to ~/.claude/commands/splatworld-agent"
+    echo -e "  ${GREEN}✓${RESET} Linked commands to ~/.claude/commands/splatworld"
 
     # Update PYTHONPATH in all command files to point to install location
     echo -e "  Updating command paths..."
@@ -206,17 +212,17 @@ print_done() {
     echo ""
     echo -e "  ${GREEN}Installation complete!${RESET}"
     echo ""
-    echo -e "  ${YELLOW}Installed to:${RESET} ~/.claude/splatworld-agent"
-    echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld-agent"
+    echo -e "  ${YELLOW}Installed to:${RESET} ~/.claude/splatworld"
+    echo -e "  ${YELLOW}Commands at:${RESET} ~/.claude/commands/splatworld"
     echo -e "  ${YELLOW}Available from:${RESET} Any project directory"
     echo ""
     echo -e "  ${YELLOW}Next steps:${RESET}"
     echo -e "  1. Run ${CYAN}/clear${RESET} or restart Claude Code"
-    echo -e "  2. Run ${CYAN}/splatworld-agent:help${RESET} to see available commands"
-    echo -e "  3. Run ${CYAN}/splatworld-agent:init${RESET} in any project to start"
+    echo -e "  2. Run ${CYAN}/splatworld:help${RESET} to see available commands"
+    echo -e "  3. Run ${CYAN}/splatworld:init${RESET} in any project to start"
     echo ""
     echo -e "  ${YELLOW}To update later:${RESET}"
-    echo -e "  Run ${CYAN}/splatworld-agent:update${RESET} from anywhere"
+    echo -e "  Run ${CYAN}/splatworld:update${RESET} from anywhere"
     echo ""
 }
 
@@ -225,7 +231,7 @@ main() {
     check_requirements
     detect_mode
 
-    # Always install to ~/.claude/splatworld-agent
+    # Always install to ~/.claude/splatworld
     prompt_location
     install_repo
     install_python
