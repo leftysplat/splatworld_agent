@@ -91,6 +91,7 @@ class GenerateTUI(App[GenerateResult]):
         self.profile = profile
         self.provider = provider
         self.no_download = no_download
+        self._api_call_count = 0
 
     def compose(self):
         """Create child widgets."""
@@ -160,6 +161,8 @@ class GenerateTUI(App[GenerateResult]):
                 enhanced_prompt = variant.variant_prompt
                 reasoning = variant.reasoning
                 modifications = variant.modifications
+                self._api_call_count += 1
+                self.call_from_thread(self._update_api_calls, self._api_call_count)
             except Exception:
                 # Fall back to basic enhancement if adapter fails
                 enhanced_prompt = enhance_prompt(self.prompt, self.profile)
@@ -182,6 +185,15 @@ class GenerateTUI(App[GenerateResult]):
             try:
                 image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
                 gen_name = gen_metadata["provider"]
+                self._api_call_count += 1
+                self.call_from_thread(self._update_api_calls, self._api_call_count)
+                # Update credits from provider metadata if available
+                if "credits_used" in gen_metadata:
+                    self.call_from_thread(
+                        self._update_credits,
+                        gen_metadata.get("credits_used", 0),
+                        gen_metadata.get("credits_limit")
+                    )
             except ProviderFailureError as e:
                 self.call_from_thread(self._update_stage, 2, "error", str(e))
                 self._cleanup_and_exit(provider_manager, marble, GenerateResult(
@@ -197,6 +209,10 @@ class GenerateTUI(App[GenerateResult]):
             self.manager.images_dir.mkdir(exist_ok=True)
             with open(flat_image_path, "wb") as f:
                 f.write(image_bytes)
+
+            # Log saved path with relative path for cleaner display
+            relative_path = f"generated_images/{image_number}.png"
+            self.call_from_thread(self._log_saved, relative_path)
 
             self.call_from_thread(self._update_stage, 2, "complete", "Image saved")
 
@@ -261,6 +277,12 @@ class GenerateTUI(App[GenerateResult]):
                 ))
                 return
 
+            self._api_call_count += 1
+            self.call_from_thread(self._update_api_calls, self._api_call_count)
+
+            if marble_result.viewer_url:
+                self.call_from_thread(self._log_url, "Viewer", marble_result.viewer_url)
+
             self.call_from_thread(self._update_stage, 3, "complete", "Conversion complete")
             self.call_from_thread(self._stop_timer)
             self.call_from_thread(self._update_current_op, "Complete!")
@@ -292,6 +314,9 @@ class GenerateTUI(App[GenerateResult]):
                 try:
                     marble.download_file(marble_result.splat_url, splat_path_obj)
                     splat_path = str(splat_path_obj)
+                    # Log splat path with relative path for cleaner display
+                    relative_splat = f"splats/{image_number}.spz"
+                    self.call_from_thread(self._log_saved, relative_splat)
                 except Exception:
                     splat_path = None
 
@@ -330,6 +355,32 @@ class GenerateTUI(App[GenerateResult]):
         """Stop the elapsed time timer (called from main thread via call_from_thread)."""
         progress = self.query_one("#progress", StageProgress)
         progress.stop_timer()
+
+    def _update_api_calls(self, count: int):
+        """Update API calls counter (called from main thread via call_from_thread)."""
+        panel = self.query_one("#resource-panel", ResourcePanel)
+        panel.api_calls = count
+
+    def _update_credits(self, used: int, limit):
+        """Update credit usage (called from main thread via call_from_thread).
+
+        Args:
+            used: Credits used count
+            limit: Credits limit (int or None)
+        """
+        panel = self.query_one("#resource-panel", ResourcePanel)
+        panel.credits_used = used
+        panel.credits_limit = limit
+
+    def _log_saved(self, path: str):
+        """Log saved file path (called from main thread via call_from_thread)."""
+        log = self.query_one("#output-log", OutputLog)
+        log.log_saved(path)
+
+    def _log_url(self, label: str, url: str):
+        """Log URL (called from main thread via call_from_thread)."""
+        log = self.query_one("#output-log", OutputLog)
+        log.log_url(label, url)
 
     def _cleanup_and_exit(self, provider_manager, marble, result: GenerateResult):
         """Clean up resources and exit with result."""
