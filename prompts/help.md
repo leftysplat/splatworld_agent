@@ -22,13 +22,28 @@ Then provide additional context:
 |---------|-------------|
 | `/splatworld:init` | Initialize project |
 | `/splatworld:generate <prompt>` | Generate with taste enhancement |
+| `/splatworld:train <prompt>` | Guided training to calibrate your taste |
+| `/splatworld:review` | Review and rate unrated images |
+| `/splatworld:resume` | Continue an interrupted training session |
 | `/splatworld:feedback <text>` | Rate/critique generation |
 | `/splatworld:exemplar <path>` | Add reference image you love |
 | `/splatworld:profile` | View taste profile |
 | `/splatworld:history` | Browse past generations |
 | `/splatworld:learn` | Synthesize feedback into preferences |
+| `/splatworld:download-splats` | Download 3D splat files |
 | `/splatworld:config` | View configuration |
 | `/splatworld:help` | Show this help |
+
+## Interaction Pattern
+
+All user interaction flows through Claude, not the CLI directly.
+When you use commands like /train or /review, Claude will:
+1. Call the Python CLI with appropriate flags
+2. Parse the output
+3. Ask you questions via structured prompts
+4. Record your responses by calling the CLI again
+
+This provides a consistent, guided experience without raw terminal interaction.
 
 ## How Learning Works
 
