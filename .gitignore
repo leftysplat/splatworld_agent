@@ -64,3 +64,4 @@ test_output/
 *.ply
 .planning/
 generated_images/
+.splatworld/
