@@ -1815,13 +1815,15 @@ def learn(dry_run: bool):
 @click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
 @click.option("--no-rate", "no_rate", is_flag=True, help="Generate without prompting for ratings (rate later with review)")
 @click.option("--single", is_flag=True, help="Generate exactly one image and exit (for scripted workflows)")
-def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON (for skill file parsing)")
+def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, json_output: bool):
     """Adaptive training mode - generates images with prompt adaptation.
 
     Usage:
       train "prompt"                  Interactive training (terminal only)
       train "prompt" --single         Generate ONE image and exit
       train "prompt" -n 5 --no-rate   Generate 5 images, rate later with review
+      train "prompt" --single --json  Generate ONE image, output JSON (for skill files)
 
     For Claude Code / scripted use, always use --single or --no-rate.
     """
@@ -2114,6 +2116,18 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
                 session_id=session_id,
             )
             manager.save_prompt_variant(history_entry)
+
+            # JSON output mode: output structured data and exit (for skill file parsing)
+            if json_output and single:
+                result = {
+                    "image_number": image_number,
+                    "generation_id": gen_id,
+                    "file_path": str(flat_image_path),
+                    "prompt": final_prompt,
+                    "variant_id": variant_id,
+                }
+                print(json.dumps(result))
+                return  # Exit without interactive loop
 
             # Get rating (skip if --no-rate flag is set)
             rating = None
