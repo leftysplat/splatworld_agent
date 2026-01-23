@@ -13,7 +13,7 @@ from textual.worker import get_current_worker
 from textual import work
 
 from .results import GenerateResult
-from .widgets import StageProgress
+from .widgets import StageProgress, ResourcePanel, OutputLog
 
 
 class GenerateTUI(App[GenerateResult]):
@@ -33,7 +33,13 @@ class GenerateTUI(App[GenerateResult]):
     CSS = """
     Screen {
         height: auto;
-        max-height: 15;
+        max-height: 20;
+    }
+
+    #resource-panel {
+        height: 1;
+        width: 100%;
+        background: $surface;
     }
 
     #progress-container {
@@ -50,6 +56,12 @@ class GenerateTUI(App[GenerateResult]):
         height: 1;
         width: 100%;
         color: $text-muted;
+    }
+
+    #output-log {
+        height: 4;
+        width: 100%;
+        border-top: solid $primary;
     }
     """
 
@@ -82,9 +94,11 @@ class GenerateTUI(App[GenerateResult]):
 
     def compose(self):
         """Create child widgets."""
+        yield ResourcePanel(id="resource-panel")
         with Vertical(id="progress-container"):
             yield StageProgress(total_stages=3, id="progress")
             yield Static("Starting direct generation...", id="current-op")
+        yield OutputLog(id="output-log")
 
     def on_mount(self):
         """Start the pipeline when app mounts."""
