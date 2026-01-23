@@ -28,6 +28,7 @@ from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHi
 from splatworld_agent.learning import LearningEngine, enhance_prompt, PromptAdapter
 from splatworld_agent.display import display
 from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
+from splatworld_agent.tui import GenerateTUI, GenerateResult
 
 console = Console()
 
@@ -3342,13 +3343,13 @@ def provider_status(json_output: bool):
 def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
     """Direct mode: prompt -> image -> 3D in one command.
 
-    Executes the full pipeline:
+    Executes the full pipeline via Textual TUI:
       Stage 1/3: Enhance prompt with taste profile
       Stage 2/3: Generate image (saved immediately)
       Stage 3/3: Convert to 3D splat via Marble
 
     The image is saved BEFORE Marble conversion to prevent data loss
-    on Marble timeout.
+    on Marble timeout. TUI displays inline under the prompt (not fullscreen).
 
     Examples:
         direct "cozy cabin interior"
@@ -3357,6 +3358,7 @@ def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
     """
     prompt_text = " ".join(prompt)
 
+    # --- Pre-TUI validation (Rich console.print is safe here) ---
     project_dir = get_project_dir()
     if not project_dir:
         if json_output:
@@ -3369,7 +3371,7 @@ def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
     manager = ProfileManager(project_dir.parent)
     profile = manager.load_profile()
 
-    # Check for required API keys
+    # Check for required API keys (Rich OK - before TUI)
     if not config.api_keys.anthropic:
         if json_output:
             print(json.dumps({"status": "error", "message": "Anthropic API key not configured"}))
@@ -3405,218 +3407,97 @@ def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
     else:
         gen_name = "nano"  # IGEN-01: Nano is default provider
 
-    # Initialize ProviderManager
-    api_keys = {
-        "nano": config.api_keys.nano or config.api_keys.google,
-        "google": config.api_keys.google,
-    }
-    provider_manager = ProviderManager(
-        api_keys=api_keys,
-        initial_provider=gen_name,
+    # --- Launch TUI (no Rich during TUI execution) ---
+    app = GenerateTUI(
+        prompt=prompt_text,
+        manager=manager,
+        config=config,
+        profile=profile,
+        provider=gen_name,
+        no_download=no_download,
     )
 
-    # Initialize PromptAdapter for enhancement
-    adapter = PromptAdapter(api_key=config.api_keys.anthropic)
-
-    # Initialize MarbleClient
-    from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
-    marble = MarbleClient(api_key=config.api_keys.marble)
-
-    # Variables for tracking
-    image_number = None
-    flat_image_path = None
-    gen_id = None
-    enhanced_prompt = None
-    splat_path = None
-    result = None
-
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Starting direct generation...", total=None)
-
-            # Stage 1/3: Enhance prompt
-            progress.update(task, description="[cyan]Stage 1/3:[/cyan] Enhancing prompt...")
-            try:
-                variant = adapter.generate_variant(prompt_text, profile)
-                enhanced_prompt = variant.variant_prompt
-                reasoning = variant.reasoning
-                modifications = variant.modifications
-            except Exception as e:
-                # Fall back to basic enhancement if adapter fails
-                enhanced_prompt = enhance_prompt(prompt_text, profile)
-                reasoning = None
-                modifications = []
-
-            # Stage 2/3: Generate image
-            progress.update(task, description=f"[cyan]Stage 2/3:[/cyan] Generating image with {gen_name}...")
-            try:
-                image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
-                gen_name = gen_metadata["provider"]  # Track actual provider used
-            except ProviderFailureError as e:
-                if json_output:
-                    print(json.dumps({
-                        "status": "provider_failure",
-                        "provider": e.provider,
-                        "fallback_available": e.fallback_available,
-                        "error": str(e.original_error),
-                    }))
-                else:
-                    console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
-                    console.print(f"[yellow]Use --provider {e.fallback_available} to retry with fallback.[/yellow]")
-                provider_manager.close()
-                marble.close()
-                sys.exit(1)
-
-            # CRITICAL: Save image IMMEDIATELY before Marble (prevents data loss on Marble timeout)
-            image_number = manager.get_next_image_number()
-            flat_image_path = manager.get_flat_image_path(image_number)
-            manager.images_dir.mkdir(exist_ok=True)
-            with open(flat_image_path, "wb") as f:
-                f.write(image_bytes)
-
-            progress.update(task, description="[cyan]Stage 2/3:[/cyan] Image generated and saved!")
-
-            # Stage 3/3: Convert to 3D
-            progress.update(task, description="[cyan]Stage 3/3:[/cyan] Converting to 3D...")
-
-            def on_marble_progress(status: str, description: str):
-                progress.update(task, description=f"[cyan]Stage 3/3:[/cyan] {description or status}")
-
-            try:
-                result = marble.generate_and_wait(
-                    image_base64=base64.b64encode(image_bytes).decode(),
-                    mime_type="image/png",
-                    display_name=f"Image {image_number}",
-                    is_panorama=True,
-                    on_progress=on_marble_progress,
-                )
-            except (MarbleTimeoutError, MarbleConversionError) as e:
-                # Image was already saved - report partial success
-                gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
-                gen_timestamp = datetime.now()
-
-                # Save metadata even though Marble failed
-                manager.save_image_metadata(image_number, {
-                    "id": gen_id,
-                    "image_number": image_number,
-                    "prompt": prompt_text,
-                    "enhanced_prompt": enhanced_prompt,
-                    "modifications": modifications if modifications else [],
-                    "reasoning": reasoning if reasoning else "",
-                    "timestamp": gen_timestamp.isoformat(),
-                    "generator": gen_name,
-                    "mode": "direct",
-                    "marble_error": str(e),
-                })
-                manager.register_image(gen_id, image_number)
-
-                if json_output:
-                    print(json.dumps({
-                        "status": "partial_success",
-                        "message": f"Image saved but 3D conversion failed: {e}",
-                        "image_number": image_number,
-                        "image_path": str(flat_image_path),
-                        "splat_path": None,
-                        "viewer_url": None,
-                        "enhanced_prompt": enhanced_prompt,
-                        "provider": gen_name,
-                    }))
-                else:
-                    console.print(f"\n[yellow]3D conversion failed: {e}[/yellow]")
-                    console.print(f"[green]Image {image_number} saved:[/green] {flat_image_path}")
-                provider_manager.close()
-                marble.close()
-                sys.exit(1)
-
-            progress.update(task, description="[green]Complete!")
-
-        # All stages succeeded - save full metadata
-        gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
-        gen_timestamp = datetime.now()
-
-        manager.save_image_metadata(image_number, {
-            "id": gen_id,
-            "image_number": image_number,
-            "prompt": prompt_text,
-            "enhanced_prompt": enhanced_prompt,
-            "modifications": modifications if modifications else [],
-            "reasoning": reasoning if reasoning else "",
-            "timestamp": gen_timestamp.isoformat(),
-            "generator": gen_name,
-            "mode": "direct",
-            "world_id": result.world_id,
-            "viewer_url": result.viewer_url,
-        })
-        manager.register_image(gen_id, image_number)
-
-        # Download splat file (respecting config and --no-download)
-        if result.splat_url and not no_download and config.defaults.download_splats:
-            manager.splats_dir.mkdir(exist_ok=True)
-            splat_path = manager.get_flat_splat_path(image_number)
-            try:
-                marble.download_file(result.splat_url, splat_path)
-                if not json_output:
-                    console.print(f"[green]Splat {image_number} saved:[/green] {splat_path}")
-            except Exception as e:
-                splat_path = None
-                if not json_output:
-                    error_msg = str(e)
-                    if "403" in error_msg or "Forbidden" in error_msg:
-                        console.print("[yellow]Splat download requires premium account.[/yellow]")
-                    else:
-                        console.print(f"[yellow]Splat download failed: {e}[/yellow]")
-
-        # Output results
+        result = app.run(inline=True)
+    except Exception as e:
+        # TUI crashed - handle gracefully
         if json_output:
-            usage_pct = gen_metadata.get("usage_percentage", 0)
             print(json.dumps({
-                "status": "success",
-                "image_number": image_number,
-                "image_path": str(flat_image_path),
-                "splat_path": str(splat_path) if splat_path else None,
-                "viewer_url": result.viewer_url,
-                "enhanced_prompt": enhanced_prompt,
-                "provider": gen_name,
-                "usage_percentage": usage_pct,
+                "status": "error",
+                "message": f"TUI execution failed: {e}",
             }))
         else:
-            # Human-readable output
+            console.print(f"[red]TUI execution failed:[/red] {e}")
+        sys.exit(1)
+
+    # --- Post-TUI output (Rich console.print is safe here) ---
+    if result is None:
+        # TUI was cancelled or returned no result
+        if json_output:
+            print(json.dumps({"status": "cancelled", "message": "Operation cancelled"}))
+        else:
+            console.print("[yellow]Operation cancelled.[/yellow]")
+        sys.exit(1)
+
+    # Handle result based on success status
+    if json_output:
+        # JSON output for skill file integration
+        if result.success:
+            print(json.dumps({
+                "status": "success",
+                "image_number": result.image_number,
+                "image_path": result.image_path,
+                "splat_path": result.splat_path,
+                "viewer_url": result.viewer_url,
+                "enhanced_prompt": result.enhanced_prompt,
+                "provider": result.provider,
+            }))
+        elif result.partial:
+            print(json.dumps({
+                "status": "partial_success",
+                "message": result.error,
+                "image_number": result.image_number,
+                "image_path": result.image_path,
+                "splat_path": None,
+                "viewer_url": None,
+                "enhanced_prompt": result.enhanced_prompt,
+                "provider": result.provider,
+            }))
+        else:
+            print(json.dumps({
+                "status": "error",
+                "message": result.error,
+                "image_number": result.image_number,
+                "image_path": result.image_path,
+            }))
+            sys.exit(1)
+    else:
+        # Human-readable output
+        if result.success:
             console.print()
             console.print(f"[dim]Original prompt:[/dim] {prompt_text}")
-            console.print(f"[dim]Enhanced:[/dim] {enhanced_prompt}")
-            if reasoning:
-                console.print(f"[dim]Reasoning: {reasoning}[/dim]")
+            console.print(f"[dim]Enhanced:[/dim] {result.enhanced_prompt}")
+            if result.reasoning:
+                console.print(f"[dim]Reasoning: {result.reasoning}[/dim]")
 
             console.print()
             console.print(Panel.fit(
                 f"[bold green]Direct generation complete![/bold green]\n\n"
-                f"[cyan]Image {image_number}:[/cyan] {flat_image_path}\n"
+                f"[cyan]Image {result.image_number}:[/cyan] {result.image_path}\n"
                 f"[cyan]Viewer:[/cyan] {result.viewer_url}\n"
-                + (f"[cyan]Splat:[/cyan] {splat_path}\n" if splat_path else "")
-                + f"\n[dim]Provider: {gen_name}[/dim]",
+                + (f"[cyan]Splat:[/cyan] {result.splat_path}\n" if result.splat_path else "")
+                + f"\n[dim]Provider: {result.provider}[/dim]",
                 title="Success",
             ))
-
-    except Exception as e:
-        if json_output:
-            print(json.dumps({
-                "status": "error",
-                "message": str(e),
-                "image_number": image_number,
-                "image_path": str(flat_image_path) if flat_image_path else None,
-            }))
+        elif result.partial:
+            console.print(f"\n[yellow]3D conversion failed: {result.error}[/yellow]")
+            console.print(f"[green]Image {result.image_number} saved:[/green] {result.image_path}")
+            sys.exit(1)
         else:
-            console.print(f"\n[red]Direct generation failed:[/red] {e}")
-            if flat_image_path and Path(flat_image_path).exists():
-                console.print(f"[green]Image {image_number} was saved:[/green] {flat_image_path}")
-        sys.exit(1)
-    finally:
-        provider_manager.close()
-        marble.close()
+            console.print(f"\n[red]Direct generation failed:[/red] {result.error}")
+            if result.image_path and Path(result.image_path).exists():
+                console.print(f"[green]Image {result.image_number} was saved:[/green] {result.image_path}")
+            sys.exit(1)
 
 
 @main.command()
