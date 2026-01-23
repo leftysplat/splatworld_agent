@@ -274,7 +274,7 @@ def check_keys():
 @click.option("--seed", type=int, help="Random seed for reproducibility")
 @click.option("--no-enhance", is_flag=True, help="Don't enhance prompt with taste profile")
 @click.option("--no-splat", is_flag=True, help="Skip 3D splat generation")
-@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator (default: nano)")
 def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generator: str):
     """Generate image and splat from a prompt."""
     prompt_text = " ".join(prompt)
@@ -322,8 +322,26 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
     gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
     image_number = manager.get_next_image_number()
 
-    # Select image generator
-    gen_name = generator or config.defaults.image_generator
+    # Load training state to check for provider preference
+    training_state = _load_training_state(manager)
+
+    # Determine generator: explicit flag > training_state > default (nano)
+    if generator:
+        gen_name = generator
+    elif training_state and training_state.get("provider"):
+        gen_name = training_state["provider"]
+    else:
+        gen_name = "nano"  # IGEN-01: Nano is default provider
+
+    # Initialize ProviderManager
+    api_keys = {
+        "nano": config.api_keys.nano or config.api_keys.google,
+        "google": config.api_keys.google,
+    }
+    provider_manager = ProviderManager(
+        api_keys=api_keys,
+        initial_provider=gen_name,
+    )
 
     try:
         with Progress(
@@ -334,15 +352,16 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
             # Step 1: Generate image
             task = progress.add_task(f"Generating image with {gen_name}...", total=None)
 
-            if gen_name == "nano":
-                from splatworld_agent.generators.nano import NanoGenerator
-                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
-            else:
-                from splatworld_agent.generators.gemini import GeminiGenerator
-                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+            try:
+                image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt, seed=seed)
+                gen_name = gen_metadata["provider"]  # Track actual provider used
+            except ProviderFailureError as e:
+                console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
+                console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                provider_manager.close()
+                sys.exit(1)
 
-            image_bytes = img_gen.generate(enhanced_prompt, seed=seed)
-            img_gen.close()
+            provider_manager.close()
 
             progress.update(task, description="[green]Image generated!")
 
@@ -729,7 +748,7 @@ def batch_rate(ratings_input: tuple):
 @click.argument("prompt", nargs=-1, required=True)
 @click.option("--count", "-n", default=5, help="Number of images to generate per cycle")
 @click.option("--cycles", "-c", default=1, help="Number of cycles (generate, review, learn)")
-@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator to use")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator (default: nano)")
 @click.option("--mode", "-m", type=click.Choice(["explore", "refine"]), default=None, help="Exploration mode (explore=diverse, refine=targeted)")
 @click.option("--inline", is_flag=True, default=False, help="Show inline image previews (iTerm2/Kitty/WezTerm)")
 @click.option("--single-cycle", is_flag=True, help="Run one cycle without interactive pause (non-interactive mode)")
@@ -772,7 +791,9 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
             console.print(f"  - {issue}")
         sys.exit(1)
 
-    gen_name = generator or config.defaults.image_generator
+    # Determine generator: explicit flag > default (nano)
+    # Note: batch doesn't read training_state since it's a one-off generation, not session continuation
+    gen_name = generator or "nano"  # IGEN-01: Nano is default provider
 
     # Single-cycle mode: force exactly one cycle, no interactive pause
     if single_cycle:
@@ -819,14 +840,17 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
         batch_gen_ids = []
         batch_image_numbers = []  # Track image numbers for flat structure
 
-        try:
-            if gen_name == "nano":
-                from splatworld_agent.generators.nano import NanoGenerator
-                img_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
-            else:
-                from splatworld_agent.generators.gemini import GeminiGenerator
-                img_gen = GeminiGenerator(api_key=config.api_keys.google)
+        # Initialize ProviderManager
+        api_keys = {
+            "nano": config.api_keys.nano or config.api_keys.google,
+            "google": config.api_keys.google,
+        }
+        provider_manager = ProviderManager(
+            api_keys=api_keys,
+            initial_provider=gen_name,
+        )
 
+        try:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -840,7 +864,14 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
                     batch_gen_ids.append(gen_id)
                     batch_image_numbers.append(image_number)
 
-                    image_bytes = img_gen.generate(enhanced_prompt, seed=None)
+                    try:
+                        image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt, seed=None)
+                        actual_generator = gen_metadata["provider"]
+                    except ProviderFailureError as e:
+                        console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
+                        console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                        provider_manager.close()
+                        sys.exit(1)
 
                     # Save generation (dual-write: nested for backward compat, flat for new structure)
                     gen_timestamp = datetime.now()
@@ -849,7 +880,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
                         prompt=prompt_text,
                         enhanced_prompt=enhanced_prompt,
                         timestamp=gen_timestamp,
-                        metadata={"generator": gen_name, "batch_id": batch_id, "batch_index": i, "image_number": image_number},
+                        metadata={"generator": actual_generator, "batch_id": batch_id, "batch_index": i, "image_number": image_number},
                     ))
 
                     # Save image to flat structure (N.png)
@@ -870,7 +901,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
                         "prompt": prompt_text,
                         "enhanced_prompt": enhanced_prompt,
                         "timestamp": gen_timestamp.isoformat(),
-                        "generator": gen_name,
+                        "generator": actual_generator,
                         "batch_id": batch_id,
                         "batch_index": i,
                     })
@@ -889,7 +920,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 
                     progress.update(task, description=f"[green]Image {image_number} saved ({i+1}/{count})")
 
-            img_gen.close()
+            provider_manager.close()
 
             # Store batch context for numbered references
             manager.set_current_batch(batch_id, batch_gen_ids)
