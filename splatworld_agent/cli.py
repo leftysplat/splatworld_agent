@@ -776,6 +776,12 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
     # Single-cycle mode: force exactly one cycle, no interactive pause
     if single_cycle:
         cycles = 1
+    elif cycles > 1:
+        # Multi-cycle requires interactive pause which is no longer supported
+        console.print("[red]Error: Multi-cycle batch mode (--cycles > 1) requires interactive pauses which are no longer supported.[/red]")
+        console.print("[dim]Use --single-cycle for non-interactive batch generation.[/dim]")
+        console.print("[dim]Or for Claude Code: /splatworld:batch[/dim]")
+        sys.exit(1)
 
     # Check calibration status
     profile = manager.load_profile()
@@ -915,28 +921,6 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
             console.print(f"  [cyan]splatworld rate {first_num} ++[/cyan]  - Love image {first_num}")
             console.print(f"  [cyan]splatworld rate {first_num + 2 if len(batch_image_numbers) > 2 else first_num} -[/cyan]   - Dislike image")
             console.print(f"  [cyan]splatworld rate {first_num} {last_num} +[/cyan] - Like multiple images")
-
-            # If more cycles, prompt for review
-            if cycle_num < cycles:
-                console.print(f"\n[yellow]Review images before cycle {cycle_num + 1}...[/yellow]")
-                console.print("Press Enter after reviewing, or Ctrl+C to stop.")
-                try:
-                    input()
-                    # Run learn to update profile
-                    feedback_count = len(manager.get_feedback_history())
-                    if feedback_count >= 3:
-                        console.print("Learning from feedback...")
-                        engine = LearningEngine(api_key=config.api_keys.anthropic)
-                        generations = manager.get_recent_generations(limit=count * cycle_num)
-                        feedbacks = manager.get_feedback_history()
-                        result = engine.synthesize_from_history(generations, feedbacks, profile)
-                        if result.get("updates"):
-                            profile = engine.apply_updates(profile, result["updates"])
-                            manager.save_profile(profile)
-                            console.print("[green]Profile updated with learned preferences.[/green]")
-                except KeyboardInterrupt:
-                    console.print("\n[yellow]Stopping batch generation.[/yellow]")
-                    break
 
         except Exception as e:
             console.print(f"\n[red]Batch generation failed:[/red] {e}")
@@ -2937,16 +2921,15 @@ def download_splats(image_nums: tuple, download_all: bool, list_only: bool, json
         console.print(f"  [blue]Viewer: {gen.viewer_url}[/blue]")
         console.print()
 
-    # If specific images were requested, proceed without confirmation
+    # If no explicit selection, error with direction to non-interactive commands
     if not download_all and not image_nums:
-        try:
-            confirm = input(f"\nDownload {len(missing_splats)} splat file(s)? (y/N): ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            confirm = "n"
-
-        if confirm != "y":
-            console.print("[yellow]Download cancelled.[/yellow]")
-            return
+        console.print("[red]Error: Interactive confirmation is no longer supported.[/red]")
+        console.print("[dim]Use non-interactive commands instead:[/dim]")
+        console.print("  [cyan]splatworld download-splats --all[/cyan]      Download all missing splats")
+        console.print("  [cyan]splatworld download-splats 1 3[/cyan]        Download specific images")
+        console.print("  [cyan]splatworld download-splats --list[/cyan]     List missing splats first")
+        console.print("[dim]Or for Claude Code: /splatworld:splats[/dim]")
+        sys.exit(1)
 
     # Download missing splats to visible splats directory
     from splatworld_agent.core.marble import MarbleClient
