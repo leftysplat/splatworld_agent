@@ -3348,6 +3348,9 @@ def _run_direct_simple(
     Used when --no-tui or --json is specified. Provides simple text output
     that works in non-interactive environments like Claude's bash execution.
 
+    Progress is ALWAYS printed to stderr so user sees real-time updates.
+    JSON output goes to stdout for Claude to parse.
+
     Returns:
         GenerateResult with pipeline outcome
     """
@@ -3355,10 +3358,14 @@ def _run_direct_simple(
     from datetime import datetime
     import uuid
 
+    from rich.console import Console
     from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
     from splatworld_agent.learning import enhance_prompt, PromptAdapter
     from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
     from splatworld_agent.tui.results import GenerateResult
+
+    # Progress console writes to stderr (always visible, doesn't interfere with JSON)
+    progress_console = Console(stderr=True, force_terminal=True)
 
     # Initialize tracking variables
     image_number = None
@@ -3383,8 +3390,7 @@ def _run_direct_simple(
 
     try:
         # Stage 1/3: Enhance prompt
-        if not json_output:
-            console.print("[dim]Stage 1/3:[/dim] Enhancing prompt with taste profile...")
+        progress_console.print("[dim]Stage 1/3:[/dim] Enhancing prompt with taste profile...")
 
         try:
             variant = adapter.generate_variant(prompt_text, profile)
@@ -3397,17 +3403,16 @@ def _run_direct_simple(
             reasoning = None
             modifications = []
 
-        if not json_output:
-            console.print("[green]✓[/green] Prompt enhanced")
+        progress_console.print("[green]✓[/green] Prompt enhanced")
 
         # Stage 2/3: Generate image
-        if not json_output:
-            console.print(f"[dim]Stage 2/3:[/dim] Generating image with {gen_name}...")
+        progress_console.print(f"[dim]Stage 2/3:[/dim] Generating image with {gen_name}...")
 
         try:
             image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
             gen_name = gen_metadata["provider"]
         except ProviderFailureError as e:
+            progress_console.print(f"[red]✗[/red] Provider {e.provider} failed")
             provider_manager.close()
             marble.close()
             return GenerateResult(
@@ -3423,12 +3428,10 @@ def _run_direct_simple(
         with open(flat_image_path, "wb") as f:
             f.write(image_bytes)
 
-        if not json_output:
-            console.print(f"[green]✓[/green] Image saved: generated_images/{image_number}.png")
+        progress_console.print(f"[green]✓[/green] Image saved: generated_images/{image_number}.png")
 
         # Stage 3/3: Convert to 3D
-        if not json_output:
-            console.print("[dim]Stage 3/3:[/dim] Converting to 3D with Marble...")
+        progress_console.print("[dim]Stage 3/3:[/dim] Converting to 3D with Marble...")
 
         try:
             marble_result = marble.generate_and_wait(
@@ -3470,9 +3473,9 @@ def _run_direct_simple(
                 error=f"3D conversion failed: {e}",
             )
 
-        if not json_output and marble_result.viewer_url:
-            console.print(f"[green]✓[/green] 3D conversion complete")
-            console.print(f"[bold cyan]Viewer:[/bold cyan] {marble_result.viewer_url}")
+        if marble_result.viewer_url:
+            progress_console.print(f"[green]✓[/green] 3D conversion complete")
+            progress_console.print(f"[bold cyan]Viewer:[/bold cyan] {marble_result.viewer_url}")
 
         # Save full metadata
         gen_id = f"direct-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
@@ -3501,8 +3504,7 @@ def _run_direct_simple(
             try:
                 marble.download_file(marble_result.splat_url, splat_path_obj)
                 splat_path = str(splat_path_obj)
-                if not json_output:
-                    console.print(f"[green]✓[/green] Splat saved: splats/{image_number}.spz")
+                progress_console.print(f"[green]✓[/green] Splat saved: splats/{image_number}.spz")
             except Exception:
                 splat_path = None
 
