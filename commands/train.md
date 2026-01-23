@@ -53,7 +53,7 @@ export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review
 Tell user:
 - How many images were generated and rated
 - If they have 3+ ratings, learning happens automatically
-- Suggest `/splatworld-agent:profile` to see their taste profile
+- Suggest `/splatworld:profile` to see their taste profile
 
 ## FORBIDDEN ACTIONS
 

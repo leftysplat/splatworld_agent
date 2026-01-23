@@ -40,8 +40,8 @@ export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli review
 
 Tell user:
 - How many images were rated
-- If they have 3+ ratings, suggest `/splatworld-agent:learn`
-- If they have loved images, suggest `/splatworld-agent:convert`
+- If they have 3+ ratings, suggest `/splatworld:learn`
+- If they have loved images, suggest `/splatworld:convert`
 
 ## FORBIDDEN ACTIONS
 

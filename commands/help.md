@@ -16,14 +16,14 @@ Output ONLY the reference content below. Do NOT add commentary.
 
 ## Quick Start
 
-1. `/splatworld-agent:init` - Initialize project with .splatworld/ folder
-2. `/splatworld-agent:train "your prompt"` - Train your taste profile (20 images)
-3. `/splatworld-agent:batch "your prompt"` - Generate with learned preferences
-4. `/splatworld-agent:convert` - Convert favorites to 3D splats
+1. `/splatworld:init` - Initialize project with .splatworld/ folder
+2. `/splatworld:train "your prompt"` - Train your taste profile (20 images)
+3. `/splatworld:batch "your prompt"` - Generate with learned preferences
+4. `/splatworld:convert` - Convert favorites to 3D splats
 
 ## Training (Start Here)
 
-**`/splatworld-agent:train <prompt>`**
+**`/splatworld:train <prompt>`**
 Guided training until profile is calibrated.
 
 - Runs generate-review-learn cycles automatically
@@ -31,9 +31,9 @@ Guided training until profile is calibrated.
 - Opens each image for quick rating (++/+/-/--)
 - Learns your preferences between rounds
 
-Usage: `/splatworld-agent:train "cozy cabin interior"`
+Usage: `/splatworld:train "cozy cabin interior"`
 
-**`/splatworld-agent:learn`**
+**`/splatworld:learn`**
 Manually run learning on feedback.
 
 - Analyzes all feedback with Claude
@@ -41,60 +41,60 @@ Manually run learning on feedback.
 - Updates taste profile
 - Use after manual review sessions
 
-Usage: `/splatworld-agent:learn`
+Usage: `/splatworld:learn`
 
 ## Batch Workflow (After Training)
 
-**`/splatworld-agent:batch <prompt>`**
+**`/splatworld:batch <prompt>`**
 Generate multiple images for review.
 
 - Default 5 images per cycle
 - Can run multiple cycles with learning between
 - Much faster iteration than single generation
 
-Usage: `/splatworld-agent:batch "futuristic city street" -n 5 -c 2`
+Usage: `/splatworld:batch "futuristic city street" -n 5 -c 2`
 
-**`/splatworld-agent:review`**
+**`/splatworld:review`**
 Interactively rate generated images.
 
 - Opens each image and prompts for rating
 - Ratings: ++ (love), + (like), - (meh), -- (hate), s (skip), q (quit)
 - Only loved images (++) will be converted to splats
 
-Usage: `/splatworld-agent:review`
-Usage: `/splatworld-agent:review --unrated`
+Usage: `/splatworld:review`
+Usage: `/splatworld:review --unrated`
 
-**`/splatworld-agent:convert`**
+**`/splatworld:convert`**
 Convert loved images to 3D splats.
 
 - Converts all ++ rated images by default
 - Uses Marble API ($1.50 per conversion)
 - Downloads .spz splat files and .glb meshes
 
-Usage: `/splatworld-agent:convert`
-Usage: `/splatworld-agent:convert --dry-run`
+Usage: `/splatworld:convert`
+Usage: `/splatworld:convert --dry-run`
 
 ## Single Generation
 
-**`/splatworld-agent:generate <prompt>`**
+**`/splatworld:generate <prompt>`**
 Generate one image + optional splat.
 
 - Enhances prompt with learned preferences
 - Can skip splat conversion with --no-splat
 
-Usage: `/splatworld-agent:generate "modern kitchen"`
+Usage: `/splatworld:generate "modern kitchen"`
 
-**`/splatworld-agent:feedback <rating>`**
+**`/splatworld:feedback <rating>`**
 Rate the last generation.
 
 - Ratings: ++ (love), + (like), - (meh), -- (hate)
 - Or provide text feedback
 
-Usage: `/splatworld-agent:feedback ++`
+Usage: `/splatworld:feedback ++`
 
 ## Profile Management
 
-**`/splatworld-agent:init`**
+**`/splatworld:init`**
 Initialize .splatworld/ in current project.
 
 Creates:
@@ -103,9 +103,9 @@ Creates:
 - `.splatworld/exemplars/` - Reference images you love
 - `.splatworld/anti-exemplars/` - Reference images you hate
 
-Usage: `/splatworld-agent:init`
+Usage: `/splatworld:init`
 
-**`/splatworld-agent:profile`**
+**`/splatworld:profile`**
 View your taste profile.
 
 Shows:
@@ -114,42 +114,42 @@ Shows:
 - Rating statistics
 - Prompt enhancement preview
 
-Usage: `/splatworld-agent:profile`
+Usage: `/splatworld:profile`
 
-**`/splatworld-agent:exemplar <image>`**
+**`/splatworld:exemplar <image>`**
 Add reference image you love.
 
 - Copies image to .splatworld/exemplars/
 - Influences future prompt enhancement
 
-Usage: `/splatworld-agent:exemplar reference.png -n "love the warm lighting"`
+Usage: `/splatworld:exemplar reference.png -n "love the warm lighting"`
 
-**`/splatworld-agent:anti-exemplar <image>`**
+**`/splatworld:anti-exemplar <image>`**
 Add reference image you hate.
 
 - Copies image to .splatworld/anti-exemplars/
 - Teaches what to avoid
 
-Usage: `/splatworld-agent:anti-exemplar bad_example.png -n "too flat"`
+Usage: `/splatworld:anti-exemplar bad_example.png -n "too flat"`
 
-**`/splatworld-agent:history`**
+**`/splatworld:history`**
 Browse past generations.
 
-Usage: `/splatworld-agent:history`
-Usage: `/splatworld-agent:history -n 20`
+Usage: `/splatworld:history`
+Usage: `/splatworld:history -n 20`
 
-**`/splatworld-agent:worlds`**
+**`/splatworld:worlds`**
 List all worlds from your Marble/WorldLabs account.
 
 - Fetches directly from Marble API
 - Shows all worlds you've created (not just local)
 - Displays viewer URLs for each world
 
-Usage: `/splatworld-agent:worlds`
+Usage: `/splatworld:worlds`
 
 ## Setup
 
-**`/splatworld-agent:config`**
+**`/splatworld:config`**
 View configuration status.
 
 Shows API key status for:
@@ -157,7 +157,7 @@ Shows API key status for:
 - ANTHROPIC_API_KEY (learning)
 - WORLDLABS_API_KEY (3D conversion)
 
-Usage: `/splatworld-agent:config`
+Usage: `/splatworld:config`
 
 ## Files & Structure
 
@@ -192,21 +192,21 @@ export WORLDLABS_API_KEY="..."
 
 **Initial training:**
 ```
-/splatworld-agent:init
-/splatworld-agent:train "your scene type"
+/splatworld:init
+/splatworld:train "your scene type"
 # Rate 20+ images until calibrated
 ```
 
 **Generate with trained profile:**
 ```
-/splatworld-agent:batch "your prompt" -n 5
-/splatworld-agent:review
-/splatworld-agent:convert
+/splatworld:batch "your prompt" -n 5
+/splatworld:review
+/splatworld:convert
 ```
 
 **Quick single generation:**
 ```
-/splatworld-agent:generate "your prompt"
-/splatworld-agent:feedback ++
+/splatworld:generate "your prompt"
+/splatworld:feedback ++
 ```
 </reference>

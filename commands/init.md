@@ -38,4 +38,4 @@ export PYTHONPATH=~/.claude/splatworld && python3 -m splatworld_agent.cli init
 
 ## After Success
 
-Tell the user: "Run `/splatworld-agent:train \"your prompt\"` to start training."
+Tell the user: "Run `/splatworld:train \"your prompt\"` to start training."
