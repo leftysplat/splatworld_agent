@@ -3365,11 +3365,27 @@ def direct(prompt: tuple, provider: str, json_output: bool, no_download: bool):
             console.print("[red]Error: Not in a SplatWorld project. Run 'splatworld init' first.[/red]")
         sys.exit(1)
 
-    config = Config.load(project_dir)
+    config = Config.load()
     manager = ProfileManager(project_dir.parent)
     profile = manager.load_profile()
 
-    # Check for Marble API key
+    # Check for required API keys
+    if not config.api_keys.anthropic:
+        if json_output:
+            print(json.dumps({"status": "error", "message": "Anthropic API key not configured"}))
+        else:
+            console.print("[red]Error: Anthropic API key required for prompt enhancement.[/red]")
+            console.print("[dim]Set ANTHROPIC_API_KEY environment variable.[/dim]")
+        sys.exit(1)
+
+    if not (config.api_keys.nano or config.api_keys.google):
+        if json_output:
+            print(json.dumps({"status": "error", "message": "Image generator API key not configured"}))
+        else:
+            console.print("[red]Error: Image generator API key required.[/red]")
+            console.print("[dim]Set NANOBANANA_API_KEY or GOOGLE_API_KEY environment variable.[/dim]")
+        sys.exit(1)
+
     if not config.api_keys.marble:
         if json_output:
             print(json.dumps({"status": "error", "message": "Marble API key not configured"}))
