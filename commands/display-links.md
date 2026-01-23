@@ -9,7 +9,7 @@ Display all World Labs viewer links for converted splats.
 Run this command:
 
 ```bash
-cd {{cwd}} && PYTHONPATH=. python3 -m splatworld_agent.cli splats
+cd {{cwd}} && PYTHONPATH=~/.claude/splatworld python3 -m splatworld_agent.cli splats
 ```
 
 This shows all 3D splats that have been converted, with clickable links to view them in the World Labs viewer.
@@ -17,5 +17,5 @@ This shows all 3D splats that have been converted, with clickable links to view 
 To open a specific splat's viewer directly:
 
 ```bash
-cd {{cwd}} && PYTHONPATH=. python3 -m splatworld_agent.cli splats --open <generation-id>
+cd {{cwd}} && PYTHONPATH=~/.claude/splatworld python3 -m splatworld_agent.cli splats --open <generation-id>
 ```

@@ -12,25 +12,25 @@ View all prompt variants tried during training, their ratings, and lineage.
 
 View recent prompt history:
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
+export PYTHONPATH=~/.claude/splatworld
 python3 -m splatworld_agent.cli prompt-history
 ```
 
 View statistics:
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
+export PYTHONPATH=~/.claude/splatworld
 python3 -m splatworld_agent.cli prompt-history --stats
 ```
 
 View lineage for a specific variant:
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
+export PYTHONPATH=~/.claude/splatworld
 python3 -m splatworld_agent.cli prompt-history --lineage <variant-id>
 ```
 
 Filter by training session:
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
+export PYTHONPATH=~/.claude/splatworld
 python3 -m splatworld_agent.cli prompt-history --session <session-id>
 ```
 

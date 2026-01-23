@@ -13,7 +13,7 @@ Download splat files from WorldLabs for conversions that don't have local splat 
 First show what splats are missing:
 
 ```bash
-export PYTHONPATH=~/Documents/splatworld_agent
+export PYTHONPATH=~/.claude/splatworld
 python3 -m splatworld_agent.cli download-splats
 ```
 
