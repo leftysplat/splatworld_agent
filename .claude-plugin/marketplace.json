@@ -1,0 +1,23 @@
+{
+  "name": "splatworld-marketplace",
+  "owner": {
+    "name": "SplatWorld Team"
+  },
+  "metadata": {
+    "description": "SplatWorld Agent plugin for iterative 3D Gaussian splat generation"
+  },
+  "plugins": [
+    {
+      "name": "splatworld",
+      "source": "./",
+      "description": "Iterative 3D Gaussian splat generation with taste learning",
+      "version": "1.6.0",
+      "author": {
+        "name": "SplatWorld Team"
+      },
+      "repository": "https://github.com/leftysplat/splatworld",
+      "license": "MIT",
+      "keywords": ["3d", "gaussian-splatting", "image-generation", "ai", "taste-learning"]
+    }
+  ]
+}

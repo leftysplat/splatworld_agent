@@ -27,10 +27,11 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 
 ### Option 1: Plugin System (Recommended)
 
-Install as a Claude Code plugin:
+Add the marketplace and install:
 
 ```
-/plugin install splatworld --from https://github.com/leftysplat/splatworld
+/plugin marketplace add leftysplat/splatworld
+/plugin install splatworld@splatworld-marketplace
 ```
 
 This installs the plugin and makes all `/splatworld:*` commands available immediately.
