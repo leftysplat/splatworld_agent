@@ -1200,6 +1200,11 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
         console.print("Set WORLDLABS_API_KEY environment variable.")
         sys.exit(1)
 
+    # Get image registry for number lookups
+    registry = manager.get_image_registry()
+    # Build reverse mapping: gen_id -> image_number
+    id_to_number = {gen_id: num for gen_id, num in registry.items()}
+
     # Find generations that could be converted
     generations = manager.get_recent_generations(limit=50)
     feedbacks = {f.generation_id: f for f in manager.get_feedback_history()}
@@ -1212,7 +1217,9 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
         if gen.splat_path:
             continue
         if fb.rating in ("++", "+"):
-            available.append((gen, fb.rating))
+            # Get image number (from registry or metadata)
+            img_num = id_to_number.get(gen.id) or gen.metadata.get("image_number")
+            available.append((gen, fb.rating, img_num))
 
     if not available:
         console.print("[yellow]No images available for conversion.[/yellow]")
@@ -1220,43 +1227,44 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
         return
 
     # Determine what to convert
-    to_convert = []
+    to_convert = []  # List of (gen, image_number) tuples
 
-    if generation:
-        # Specific generations requested
-        for gen_id in generation:
-            gen = manager.get_generation(gen_id)
+    if image_nums:
+        # Specific image numbers requested
+        for img_num in image_nums:
+            gen = manager.get_generation_by_number(img_num)
             if gen:
-                to_convert.append(gen)
+                to_convert.append((gen, img_num))
             else:
-                console.print(f"[yellow]Generation not found: {gen_id}[/yellow]")
+                console.print(f"[yellow]Image not found: {img_num}[/yellow]")
     elif all_loved:
         # All '++' rated
-        to_convert = [g for g, r in available if r == "++"]
+        to_convert = [(g, n) for g, r, n in available if r == "++"]
     elif all_positive:
         # All '+' and '++' rated
-        to_convert = [g for g, r in available]
+        to_convert = [(g, n) for g, r, n in available]
 
     # If just listing or no action specified, show available and exit
-    if list_only or (not generation and not all_loved and not all_positive):
+    if list_only or (not image_nums and not all_loved and not all_positive):
         console.print(Panel.fit(
             f"[bold]Found {len(available)} images ready for 3D conversion[/bold]\n\n"
-            "Available generations:\n" +
-            "\n".join(f"  [cyan]{g.id}[/cyan] [{r}]: {g.prompt[:45]}..." for g, r in available),
+            "Available images:\n" +
+            "\n".join(f"  [cyan]Image {n or '?'}[/cyan] [{r}]: {g.prompt[:45]}..." for g, r, n in available),
             title="3D Conversion",
         ))
-        console.print("\n[dim]Use -g <id> to convert a specific image, or --all-loved to convert all.[/dim]")
+        console.print("\n[dim]Use image numbers to convert specific images, or --all-loved to convert all.[/dim]")
+        console.print("[dim]Example: splatworld convert 1 3 5[/dim]")
         return
 
     if not to_convert:
-        console.print("[yellow]No matching generations to convert.[/yellow]")
+        console.print("[yellow]No matching images to convert.[/yellow]")
         return
 
     # Show what will be converted
     cost = len(to_convert) * 1.50
-    console.print(f"\n[bold]Converting {len(to_convert)} image(s)[/bold] — Estimated cost: ${cost:.2f}")
-    for g in to_convert:
-        console.print(f"  [cyan]{g.id}[/cyan]: {g.prompt[:50]}...")
+    console.print(f"\n[bold]Converting {len(to_convert)} image(s)[/bold] -- Estimated cost: ${cost:.2f}")
+    for g, img_num in to_convert:
+        console.print(f"  [cyan]Image {img_num or '?'}[/cyan]: {g.prompt[:50]}...")
 
     # Convert each image
     from splatworld_agent.core.marble import MarbleClient
@@ -1276,47 +1284,53 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
             BarColumn(),
             console=console,
         ) as progress:
-            for i, gen in enumerate(to_convert):
-                task = progress.add_task(f"Converting {i+1}/{len(to_convert)}: {gen.id}...", total=None)
+            for i, (gen, img_num) in enumerate(to_convert):
+                task = progress.add_task(f"Converting {i+1}/{len(to_convert)}: Image {img_num or '?'}...", total=None)
 
-                # Load image
-                if not gen.source_image_path or not Path(gen.source_image_path).exists():
-                    progress.update(task, description=f"[red]Missing image: {gen.id}[/red]")
+                # Load image from flat path if available, otherwise nested
+                flat_path = manager.get_flat_image_path(img_num) if img_num else None
+                if flat_path and flat_path.exists():
+                    image_source_path = flat_path
+                elif gen.source_image_path and Path(gen.source_image_path).exists():
+                    image_source_path = Path(gen.source_image_path)
+                else:
+                    progress.update(task, description=f"[red]Missing image: Image {img_num or '?'}[/red]")
                     continue
 
-                with open(gen.source_image_path, "rb") as f:
+                with open(image_source_path, "rb") as f:
                     image_bytes = f.read()
 
                 image_b64 = base64.b64encode(image_bytes).decode()
 
                 # Show generating status
-                progress.update(task, description=f"[cyan]Generating 3D splat for {gen.id}...[/cyan]")
+                progress.update(task, description=f"[cyan]Generating 3D splat for Image {img_num or '?'}...[/cyan]")
 
                 def on_progress(status: str, description: str):
                     status_text = description or status
-                    progress.update(task, description=f"[cyan]{gen.id}:[/cyan] {status_text}")
+                    progress.update(task, description=f"[cyan]Image {img_num or '?'}:[/cyan] {status_text}")
 
                 try:
                     result = marble.generate_and_wait(
                         image_base64=image_b64,
                         mime_type="image/png",
-                        display_name=gen.id,
+                        display_name=f"Image {img_num}" if img_num else gen.id,
                         is_panorama=True,
                         on_progress=on_progress,
                     )
                 except Exception as api_error:
-                    progress.update(task, description=f"[red]API error for {gen.id}: {api_error}[/red]")
+                    progress.update(task, description=f"[red]API error for Image {img_num or '?'}: {api_error}[/red]")
                     continue
 
-                progress.update(task, description=f"[green]✓ Generated splat for {gen.id}[/green]")
+                progress.update(task, description=f"[green]Generated splat for Image {img_num or '?'}[/green]")
 
-                # Download splat file to visible splats directory (if enabled and available)
+                # Download splat file to visible splats directory (flat: N.spz)
                 splat_path = None
                 mesh_path = None
 
                 if result.splat_url and config.defaults.download_splats:
                     manager.splats_dir.mkdir(exist_ok=True)
-                    splat_path = manager.splats_dir / f"{gen.id}.spz"
+                    # Use image number for flat structure
+                    splat_path = manager.get_flat_splat_path(img_num) if img_num else manager.splats_dir / f"{gen.id}.spz"
                     try:
                         marble.download_file(result.splat_url, splat_path)
                     except Exception as e:
@@ -1330,10 +1344,9 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
                 elif result.splat_url and not config.defaults.download_splats:
                     console.print(f"[dim]Splat download skipped (download_splats=false). Viewer URL saved.[/dim]")
 
-                # Download mesh file to image directory
+                # Download mesh file to splats directory (flat structure)
                 if result.mesh_url and config.defaults.download_meshes:
-                    image_dir = Path(gen.source_image_path).parent
-                    mesh_path = image_dir / "collision.glb"
+                    mesh_path = manager.splats_dir / f"{img_num}-collision.glb" if img_num else manager.splats_dir / f"{gen.id}-collision.glb"
                     try:
                         marble.download_file(result.mesh_url, mesh_path)
                     except Exception as e:
@@ -1343,7 +1356,7 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
                 # Update metadata in hidden directory
                 metadata_dir = manager.get_metadata_dir(gen.id)
                 if not metadata_dir:
-                    console.print(f"[yellow]Could not find metadata for {gen.id}[/yellow]")
+                    console.print(f"[yellow]Could not find metadata for Image {img_num or '?'}[/yellow]")
                     continue
                 metadata_path = metadata_dir / "metadata.json"
                 with open(metadata_path) as f:
@@ -1361,10 +1374,23 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
                 with open(metadata_path, "w") as f:
                     json.dump(gen_data, f, indent=2)
 
+                # Also update flat metadata if available
+                if img_num:
+                    flat_metadata = manager.load_image_metadata(img_num)
+                    if flat_metadata:
+                        if splat_path:
+                            flat_metadata["splat_path"] = str(splat_path)
+                        if mesh_path:
+                            flat_metadata["mesh_path"] = str(mesh_path)
+                        flat_metadata["viewer_url"] = result.viewer_url
+                        if result.splat_url:
+                            flat_metadata["splat_url"] = result.splat_url
+                        manager.save_image_metadata(img_num, flat_metadata)
+
                 total_cost += result.cost_usd
                 converted += 1
-                converted_results.append((gen.id, result.viewer_url, splat_path))
-                progress.update(task, description=f"[green]Converted: {gen.id}[/green]")
+                converted_results.append((img_num, result.viewer_url, splat_path))
+                progress.update(task, description=f"[green]Converted: Image {img_num or '?'}[/green]")
 
     finally:
         marble.close()
@@ -1376,8 +1402,8 @@ def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: b
     # Show viewer links for all converted images
     if converted_results:
         console.print("\n[bold]View your 3D splats:[/bold]")
-        for gen_id, viewer_url, splat_path in converted_results:
-            console.print(f"  [cyan]{gen_id}[/cyan]")
+        for img_num, viewer_url, splat_path in converted_results:
+            console.print(f"  [cyan]Image {img_num or '?'}[/cyan]")
             if viewer_url:
                 console.print(f"    Marble Labs: [link={viewer_url}]{viewer_url}[/link]")
             if splat_path:
