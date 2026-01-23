@@ -426,7 +426,10 @@ def feedback(feedback_text: tuple, generation: str):
 @click.argument("image_nums", nargs=-1, type=int, required=True)
 @click.argument("rating", type=click.Choice(["++", "+", "-", "--"]))
 def rate(image_nums: tuple, rating: str):
-    """Rate images by number from the current batch.
+    """Rate images by global image number.
+
+    Image numbers are the sequential numbers assigned during generation
+    (e.g., 1.png, 2.png in generated_images/).
 
     Examples:
         rate 1 ++      Rate image 1 as love
@@ -446,32 +449,6 @@ def rate(image_nums: tuple, rating: str):
 
     manager = ProfileManager(project_dir.parent)
 
-    # Get current batch info for validation
-    if not manager.current_session_path.exists():
-        console.print("[red]No batch context found.[/red]")
-        console.print("[yellow]Generate a batch first: splatworld batch \"your prompt\"[/yellow]")
-        sys.exit(1)
-
-    # Read batch size for validation
-    try:
-        with open(manager.current_session_path) as f:
-            session = json.load(f)
-        batch_size = session.get("batch_size", 0)
-    except (json.JSONDecodeError, IOError):
-        console.print("[red]Error reading batch context.[/red]")
-        sys.exit(1)
-
-    if batch_size == 0:
-        console.print("[red]No images in current batch.[/red]")
-        sys.exit(1)
-
-    # Validate all image numbers first
-    invalid_nums = [n for n in image_nums if n < 1 or n > batch_size]
-    if invalid_nums:
-        console.print(f"[red]Invalid image number(s): {invalid_nums}[/red]")
-        console.print(f"[yellow]Valid range: 1-{batch_size}[/yellow]")
-        sys.exit(1)
-
     # Rate each image
     rating_display = {
         "++": "[green]Love it![/green]",
@@ -481,10 +458,21 @@ def rate(image_nums: tuple, rating: str):
     }
 
     for image_num in image_nums:
-        gen_id = manager.resolve_image_number(image_num)
+        # Try global image number lookup first (new flat structure)
+        gen = manager.get_generation_by_number(image_num)
+        gen_id = None
+        resolved_number = image_num
+
+        if gen:
+            gen_id = gen.id
+        else:
+            # Fall back to batch-relative lookup for backward compatibility
+            if manager.current_session_path.exists():
+                gen_id = manager.resolve_image_number(image_num)
 
         if not gen_id:
             console.print(f"[red]Could not resolve image {image_num}.[/red]")
+            console.print(f"[dim]Check that the image exists in generated_images/[/dim]")
             continue
 
         # Create and save feedback (replaces existing if re-rating)
@@ -496,9 +484,9 @@ def rate(image_nums: tuple, rating: str):
         was_replaced, old_rating = manager.add_or_replace_feedback(fb)
 
         if was_replaced:
-            console.print(f"Image {image_num}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
+            console.print(f"Rated Image {resolved_number}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
         else:
-            console.print(f"Image {image_num}: {rating_display[rating]}")
+            console.print(f"Rated Image {resolved_number}: {rating_display[rating]}")
 
     # Show quick stats
     if len(image_nums) > 1:
@@ -517,6 +505,9 @@ def rate(image_nums: tuple, rating: str):
 def batch_rate(ratings_input: tuple):
     """Rate multiple images with different ratings in one command.
 
+    Image numbers are the global sequential numbers assigned during generation
+    (e.g., 1.png, 2.png in generated_images/).
+
     Examples:
         brate 1 ++ 2 - 3 -- 4 +
         brate 1++ 2- 3-- 4+     (spaces optional)
@@ -534,26 +525,6 @@ def batch_rate(ratings_input: tuple):
 
     manager = ProfileManager(project_dir.parent)
 
-    # Check for batch context
-    if not manager.current_session_path.exists():
-        console.print("[red]No batch context found.[/red]")
-        console.print("[yellow]Generate a batch first: splatworld batch \"your prompt\"[/yellow]")
-        sys.exit(1)
-
-    # Get batch info
-    try:
-        with open(manager.current_session_path) as f:
-            session = json.load(f)
-        batch_size = session.get("batch_size", 0)
-        batch_gen_ids = session.get("batch_generation_ids", [])
-    except (json.JSONDecodeError, IOError):
-        console.print("[red]Error reading batch context.[/red]")
-        sys.exit(1)
-
-    if batch_size == 0:
-        console.print("[red]No images in current batch.[/red]")
-        sys.exit(1)
-
     # Parse the input
     input_str = " ".join(ratings_input)
     pairs = parse_batch_ratings(input_str)
@@ -561,13 +532,6 @@ def batch_rate(ratings_input: tuple):
     if not pairs:
         console.print("[red]Could not parse ratings.[/red]")
         console.print("[yellow]Format: 1 ++ 2 - 3 -- 4 +[/yellow]")
-        sys.exit(1)
-
-    # Validate all image numbers
-    invalid_nums = [n for n, _ in pairs if n < 1 or n > batch_size]
-    if invalid_nums:
-        console.print(f"[red]Invalid image number(s): {invalid_nums}[/red]")
-        console.print(f"[yellow]Valid range: 1-{batch_size}[/yellow]")
         sys.exit(1)
 
     # Process each rating
@@ -579,10 +543,20 @@ def batch_rate(ratings_input: tuple):
     }
 
     for image_num, rating in pairs:
-        gen_id = manager.resolve_image_number(image_num)
+        # Try global image number lookup first (new flat structure)
+        gen = manager.get_generation_by_number(image_num)
+        gen_id = None
+
+        if gen:
+            gen_id = gen.id
+        else:
+            # Fall back to batch-relative lookup for backward compatibility
+            if manager.current_session_path.exists():
+                gen_id = manager.resolve_image_number(image_num)
 
         if not gen_id:
             console.print(f"[red]Could not resolve image {image_num}.[/red]")
+            console.print(f"[dim]Check that the image exists in generated_images/[/dim]")
             continue
 
         fb = Feedback(
@@ -594,30 +568,39 @@ def batch_rate(ratings_input: tuple):
         was_replaced, old_rating = manager.add_or_replace_feedback(fb)
 
         if was_replaced:
-            console.print(f"Image {image_num}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
+            console.print(f"Rated Image {image_num}: {rating_display[old_rating]} -> {rating_display[rating]} [dim](updated)[/dim]")
         else:
-            console.print(f"Image {image_num}: {rating_display[rating]}")
+            console.print(f"Rated Image {image_num}: {rating_display[rating]}")
 
-    # Check for missing ratings (RATE-02)
-    unrated = manager.get_unrated_in_batch(batch_gen_ids)
-    if unrated:
-        console.print(f"\n[yellow]Unrated images: {', '.join(map(str, unrated))}[/yellow]")
-        if click.confirm("Rate remaining images?", default=True):
-            for img_num in unrated:
-                rating = click.prompt(
-                    f"Rating for image {img_num}",
-                    type=click.Choice(["++", "+", "-", "--", "s"]),
-                    default="s"
-                )
-                if rating != "s":
-                    gen_id = manager.resolve_image_number(img_num)
-                    fb = Feedback(
-                        generation_id=gen_id,
-                        timestamp=datetime.now(),
-                        rating=rating,
-                    )
-                    manager.add_or_replace_feedback(fb)
-                    console.print(f"Image {img_num}: {rating_display[rating]}")
+    # Check for missing ratings in current batch (RATE-02)
+    # Only applies if there's an active batch context
+    if manager.current_session_path.exists():
+        try:
+            with open(manager.current_session_path) as f:
+                session = json.load(f)
+            batch_gen_ids = session.get("batch_generation_ids", [])
+            if batch_gen_ids:
+                unrated = manager.get_unrated_in_batch(batch_gen_ids)
+                if unrated:
+                    console.print(f"\n[yellow]Unrated images in current batch: {', '.join(map(str, unrated))}[/yellow]")
+                    if click.confirm("Rate remaining batch images?", default=True):
+                        for img_num in unrated:
+                            rating_input = click.prompt(
+                                f"Rating for batch image {img_num}",
+                                type=click.Choice(["++", "+", "-", "--", "s"]),
+                                default="s"
+                            )
+                            if rating_input != "s":
+                                gen_id = manager.resolve_image_number(img_num)
+                                fb = Feedback(
+                                    generation_id=gen_id,
+                                    timestamp=datetime.now(),
+                                    rating=rating_input,
+                                )
+                                manager.add_or_replace_feedback(fb)
+                                console.print(f"Rated Image {img_num}: {rating_display[rating_input]}")
+        except (json.JSONDecodeError, IOError):
+            pass  # No batch context, skip unrated check
 
     # Summary
     console.print(f"\n[green]Rated {len(pairs)} images.[/green]")
