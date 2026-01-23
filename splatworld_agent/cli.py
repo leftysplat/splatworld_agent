@@ -2080,18 +2080,18 @@ def cancel_training():
 
 @main.command("resume")
 @click.option("--list-unrated", is_flag=True, help="List unrated images from session without interactive prompt")
+@click.option("--skip-unrated", is_flag=True, help="Skip unrated images and reactivate session for new generations")
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON (for skill file parsing)")
-def resume_training(list_unrated: bool, json_output: bool):
+def resume_training(list_unrated: bool, skip_unrated: bool, json_output: bool):
     """Continue an interrupted training session (SESS-01, SESS-02).
 
-    Prompts: "Continue training on unrated images, or start new generations?"
-
-    - Continue unrated: Shows unrated images from previous session for rating
-    - Start new: Resumes generating new images with same base prompt
+    Non-interactive modes:
+      --list-unrated --json  List unrated images from session as JSON
+      --skip-unrated         Reactivate session without rating unrated images
 
     Example:
-        splatworld resume
         splatworld resume --list-unrated --json  # For skill files
+        splatworld resume --skip-unrated         # Reactivate session
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -2161,81 +2161,29 @@ def resume_training(list_unrated: bool, json_output: bool):
         if gen.metadata.get("training_session") == session_id:
             unrated_in_session.append(gen)
 
+    # Handle --skip-unrated: Reactivate session without prompting
+    if skip_unrated:
+        if unrated_in_session:
+            console.print(f"[dim]Skipping {len(unrated_in_session)} unrated images[/dim]")
+        # Reactivate session for train command to pick up
+        training_state["status"] = "active"
+        _save_training_state(manager, training_state)
+        console.print(f"\n[green]Session reactivated![/green]")
+        console.print(f"[cyan]Base prompt: {base_prompt}[/cyan]")
+        console.print("[dim]Run 'splatworld train --no-rate' to generate new images.[/dim]")
+        return
+
+    # No --skip-unrated flag: require explicit flag for non-interactive use
     if unrated_in_session:
         console.print(f"\n[yellow]Found {len(unrated_in_session)} unrated images from this session.[/yellow]")
-        console.print("\nOptions:")
-        console.print("  [cyan]1[/cyan] - Rate unrated images first, then continue")
-        console.print("  [cyan]2[/cyan] - Skip unrated and start new generations")
-        console.print("  [cyan]q[/cyan] - Quit without resuming")
 
-        try:
-            choice = input("\nChoice (1/2/q): ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            choice = "q"
-
-        if choice == "q":
-            console.print("[dim]Resume cancelled.[/dim]")
-            return
-
-        if choice == "1":
-            # Rate unrated images
-            console.print(f"\n[bold]Rating {len(unrated_in_session)} unrated images[/bold]")
-            console.print("Rate each: [green]++[/green]=love [green]+[/green]=like [yellow]-[/yellow]=meh [red]--[/red]=hate [dim]s[/dim]=skip")
-
-            rated = 0
-            for gen in unrated_in_session:
-                console.print(f"\n[dim]Image {rated + 1}/{len(unrated_in_session)}[/dim]")
-                console.print(f"Variant: {gen.enhanced_prompt[:80]}...")
-
-                if gen.source_image_path:
-                    console.print(f"[dim]File: {gen.source_image_path}[/dim]")
-                    # Don't auto-open - user can view in IDE/file explorer
-
-                while True:
-                    try:
-                        rating_input = input("Rating (++/+/-/--/s/q): ").strip()
-                    except (KeyboardInterrupt, EOFError):
-                        rating_input = "q"
-
-                    if rating_input.lower() == "q":
-                        console.print("[dim]Stopped rating.[/dim]")
-                        break
-                    elif rating_input.lower() == "s":
-                        console.print("[dim]Skipped[/dim]")
-                        break
-                    elif rating_input in ("++", "+", "-", "--"):
-                        fb = Feedback(
-                            generation_id=gen.id,
-                            timestamp=datetime.now(),
-                            rating=rating_input,
-                        )
-                        manager.add_or_replace_feedback(fb)
-
-                        # Update prompt history if variant_id exists
-                        variant_id = gen.metadata.get("variant_id")
-                        if variant_id:
-                            manager.update_prompt_variant_rating(variant_id, rating_input)
-
-                        rating_display = {"++": "[green]Love![/green]", "+": "[green]Good[/green]",
-                                          "-": "[yellow]Meh[/yellow]", "--": "[red]Hate[/red]"}
-                        console.print(rating_display[rating_input])
-                        rated += 1
-                        break
-                    else:
-                        console.print("[red]Invalid. Use ++, +, -, --, s, or q[/red]")
-
-                if rating_input.lower() == "q":
-                    break
-
-            console.print(f"\n[green]Rated {rated} images.[/green]")
-
-    # Now continue with new generations
-    console.print(f"\n[cyan]Continuing training with: {base_prompt}[/cyan]")
-    console.print("[dim]Run 'splatworld train' to generate new images.[/dim]")
-
-    # Reactivate session for train command to pick up
-    training_state["status"] = "active"
-    _save_training_state(manager, training_state)
+    console.print("[red]Error: Interactive resume is no longer supported.[/red]")
+    console.print("[dim]Use non-interactive commands instead:[/dim]")
+    console.print("  [cyan]splatworld resume --list-unrated --json[/cyan]  List unrated images")
+    console.print("  [cyan]splatworld resume --skip-unrated[/cyan]         Reactivate session")
+    console.print("  [cyan]splatworld rate N RATING[/cyan]                 Rate specific image")
+    console.print("[dim]Or for Claude Code: /splatworld:resume[/dim]")
+    sys.exit(1)
 
 
 @main.command("install-prompts")
