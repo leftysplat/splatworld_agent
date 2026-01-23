@@ -711,6 +711,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
         # Track this batch
         batch_id = f"batch-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         batch_gen_ids = []
+        batch_image_numbers = []  # Track image numbers for flat structure
 
         try:
             if gen_name == "nano":
@@ -729,33 +730,58 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
                     task = progress.add_task(f"Generating image {i+1}/{count}...", total=None)
 
                     gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                    image_number = manager.get_next_image_number()
                     batch_gen_ids.append(gen_id)
+                    batch_image_numbers.append(image_number)
 
                     image_bytes = img_gen.generate(enhanced_prompt, seed=None)
 
-                    # Save generation
+                    # Save generation (dual-write: nested for backward compat, flat for new structure)
+                    gen_timestamp = datetime.now()
                     image_dir, metadata_dir = manager.save_generation(Generation(
                         id=gen_id,
                         prompt=prompt_text,
                         enhanced_prompt=enhanced_prompt,
-                        timestamp=datetime.now(),
-                        metadata={"generator": gen_name, "batch_id": batch_id, "batch_index": i},
+                        timestamp=gen_timestamp,
+                        metadata={"generator": gen_name, "batch_id": batch_id, "batch_index": i, "image_number": image_number},
                     ))
 
-                    # Save image to visible directory
+                    # Save image to flat structure (N.png)
+                    flat_image_path = manager.get_flat_image_path(image_number)
+                    manager.images_dir.mkdir(exist_ok=True)
+                    with open(flat_image_path, "wb") as f:
+                        f.write(image_bytes)
+
+                    # Also save to nested structure for backward compat
                     image_path = image_dir / "source.png"
                     with open(image_path, "wb") as f:
                         f.write(image_bytes)
 
-                    # Update metadata with path
+                    # Save flat metadata
+                    manager.save_image_metadata(image_number, {
+                        "id": gen_id,
+                        "image_number": image_number,
+                        "prompt": prompt_text,
+                        "enhanced_prompt": enhanced_prompt,
+                        "timestamp": gen_timestamp.isoformat(),
+                        "generator": gen_name,
+                        "batch_id": batch_id,
+                        "batch_index": i,
+                    })
+
+                    # Register mapping from gen_id to image_number
+                    manager.register_image(gen_id, image_number)
+
+                    # Update nested metadata with paths
                     metadata_path = metadata_dir / "metadata.json"
                     with open(metadata_path) as f:
                         gen_data = json.load(f)
-                    gen_data["source_image_path"] = str(image_path)
+                    gen_data["source_image_path"] = str(flat_image_path)
+                    gen_data["image_number"] = image_number
                     with open(metadata_path, "w") as f:
                         json.dump(gen_data, f, indent=2)
 
-                    progress.update(task, description=f"[green]Image {i+1}/{count} saved: {gen_id}")
+                    progress.update(task, description=f"[green]Image {image_number} saved ({i+1}/{count})")
 
             img_gen.close()
 
@@ -765,29 +791,31 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
             console.print(f"\n[bold green]Batch complete![/bold green] Generated {count} images.")
             console.print(f"[dim]Batch ID: {batch_id}[/dim]")
 
-            # Show image list
+            # Show image list with image numbers
+            first_num = batch_image_numbers[0] if batch_image_numbers else 1
+            last_num = batch_image_numbers[-1] if batch_image_numbers else count
+
             if inline:
                 # Inline preview mode
                 console.print("\n[bold]Your images:[/bold]")
-                for i, gen_id in enumerate(batch_gen_ids, start=1):
-                    gen = manager.get_generation(gen_id)
-                    if gen and gen.source_image_path:
-                        console.print(f"\n[cyan]Image {i}[/cyan]")
-                        displayed = display.display_image(Path(gen.source_image_path), max_width=60)
-                        if displayed:
-                            console.print(f"[dim]{gen.source_image_path}[/dim]")
-                        else:
-                            console.print(f"  {gen.source_image_path}")
+                for img_num in batch_image_numbers:
+                    flat_path = manager.get_flat_image_path(img_num)
+                    console.print(f"\n[cyan]Image {img_num}[/cyan]")
+                    displayed = display.display_image(flat_path, max_width=60)
+                    if displayed:
+                        console.print(f"[dim]{flat_path}[/dim]")
+                    else:
+                        console.print(f"  {flat_path}")
             else:
                 # Non-intrusive mode (default) - DISP-03
-                console.print(f"\n[bold]Images 1-{count} generated.[/bold] View externally, then rate here.")
-                console.print(f"[dim]Files saved to: {manager.splatworld_dir / 'generations'}[/dim]")
+                console.print(f"\n[bold]Images {first_num}-{last_num} generated.[/bold] View externally, then rate here.")
+                console.print(f"[dim]Files saved to: {manager.images_dir}[/dim]")
 
-            # Show rating instructions with new syntax
+            # Show rating instructions with actual image numbers
             console.print("\n[bold]Rate your images:[/bold]")
-            console.print("  [cyan]splatworld rate 1 ++[/cyan]  - Love image 1")
-            console.print("  [cyan]splatworld rate 3 -[/cyan]   - Dislike image 3")
-            console.print("  [cyan]splatworld rate 2 5 +[/cyan] - Like images 2 and 5")
+            console.print(f"  [cyan]splatworld rate {first_num} ++[/cyan]  - Love image {first_num}")
+            console.print(f"  [cyan]splatworld rate {first_num + 2 if len(batch_image_numbers) > 2 else first_num} -[/cyan]   - Dislike image")
+            console.print(f"  [cyan]splatworld rate {first_num} {last_num} +[/cyan] - Like multiple images")
 
             # If more cycles, prompt for review
             if cycle_num < cycles:

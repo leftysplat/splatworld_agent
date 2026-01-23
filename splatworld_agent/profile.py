@@ -4,6 +4,7 @@ Profile management for SplatWorld Agent.
 
 import json
 import re
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -940,3 +941,234 @@ class ProfileManager:
 
         with open(metadata_path) as f:
             return json.load(f)
+
+    # Migration methods (FILE-03)
+
+    def _collect_nested_generations(self) -> list[Generation]:
+        """Collect all generations from nested structure, sorted by timestamp.
+
+        Returns:
+            List of Generation objects sorted oldest-first (for migration order)
+        """
+        generations = []
+
+        if not self.generations_dir.exists():
+            return generations
+
+        # Iterate through date directories
+        for date_dir in self.generations_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            # Iterate through generation directories within each date
+            for gen_dir in date_dir.iterdir():
+                if not gen_dir.is_dir():
+                    continue
+
+                metadata_path = gen_dir / "metadata.json"
+                if not metadata_path.exists():
+                    continue
+
+                try:
+                    with open(metadata_path) as f:
+                        gen_data = json.load(f)
+                    gen = Generation.from_dict(gen_data)
+                    generations.append(gen)
+                except (json.JSONDecodeError, KeyError, IOError):
+                    # Skip corrupted metadata
+                    continue
+
+        # Sort by timestamp, oldest first (for chronological numbering)
+        generations.sort(key=lambda g: g.timestamp)
+
+        return generations
+
+    def migrate_existing_generations(self, dry_run: bool = False) -> dict:
+        """Migrate existing nested generations to flat structure.
+
+        Copies images and metadata from:
+          generated_images/DATE/UUID/source.png -> generated_images/N.png
+          (metadata) -> .splatworld/image_metadata/N-metadata.json
+
+        Also migrates splat files if present:
+          downloaded_splats/gen-UUID.spz -> downloaded_splats/N.spz
+
+        Args:
+            dry_run: If True, report what would be done without making changes
+
+        Returns:
+            Dict with migration stats:
+            - migrated: Number of images migrated
+            - skipped: Number of already-migrated images (idempotent)
+            - splats_migrated: Number of splat files migrated
+            - errors: List of error messages
+        """
+        stats = {
+            "migrated": 0,
+            "skipped": 0,
+            "splats_migrated": 0,
+            "errors": [],
+        }
+
+        # Get all nested generations sorted by timestamp (oldest first)
+        generations = self._collect_nested_generations()
+
+        if not generations:
+            return stats
+
+        # Get current registry to check for already-migrated
+        registry = self.get_image_registry()
+
+        for gen in generations:
+            # Check if already migrated (idempotent)
+            if gen.id in registry:
+                stats["skipped"] += 1
+                continue
+
+            # Find source image in nested structure
+            source_path = None
+            if gen.source_image_path:
+                source_path = Path(gen.source_image_path)
+                if not source_path.exists():
+                    # Try relative path from generations_dir
+                    date_str = gen.timestamp.strftime("%Y-%m-%d")
+                    alt_path = self.images_dir / date_str / gen.id / "source.png"
+                    if alt_path.exists():
+                        source_path = alt_path
+                    else:
+                        stats["errors"].append(f"Source not found for {gen.id}")
+                        continue
+            else:
+                # No source_image_path, try to locate
+                date_str = gen.timestamp.strftime("%Y-%m-%d")
+                source_path = self.images_dir / date_str / gen.id / "source.png"
+                if not source_path.exists():
+                    stats["errors"].append(f"No source image for {gen.id}")
+                    continue
+
+            if dry_run:
+                # Just count what would be migrated
+                stats["migrated"] += 1
+                # Check for splat file
+                splat_source = self.splats_dir / f"gen-{gen.id}.spz"
+                if splat_source.exists():
+                    stats["splats_migrated"] += 1
+                continue
+
+            # Get next number and migrate
+            new_number = self.get_next_image_number()
+
+            # Create destination paths
+            dest_image = self.get_flat_image_path(new_number)
+
+            # Ensure directories exist
+            self.images_dir.mkdir(parents=True, exist_ok=True)
+            self.image_metadata_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # Copy image file
+                shutil.copy2(source_path, dest_image)
+
+                # Save metadata to new location
+                metadata = gen.to_dict()
+                metadata["original_id"] = gen.id
+                metadata["migrated_at"] = datetime.now().isoformat()
+                self.save_image_metadata(new_number, metadata)
+
+                # Register the mapping
+                self.register_image(gen.id, new_number)
+
+                stats["migrated"] += 1
+
+                # Handle splat file if it exists (gen-UUID.spz format)
+                splat_source = self.splats_dir / f"gen-{gen.id}.spz"
+                if splat_source.exists():
+                    splat_dest = self.get_flat_splat_path(new_number)
+                    self.splats_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(splat_source, splat_dest)
+                    stats["splats_migrated"] += 1
+
+            except IOError as e:
+                stats["errors"].append(f"Failed to migrate {gen.id}: {e}")
+                # Note: Counter was incremented but image not created
+                # This is acceptable - gaps in numbering are OK
+
+        return stats
+
+    def verify_migration(self) -> dict:
+        """Verify migration status and return statistics.
+
+        Returns:
+            Dict with verification stats:
+            - nested_images: Count of images in nested structure
+            - flat_images: Count of images in flat structure (N.png)
+            - registered: Count of IDs in registry
+            - nested_splats: Count of splats in nested format (gen-UUID.spz)
+            - flat_splats: Count of splats in flat format (N.spz)
+            - unregistered: List of nested IDs not in registry
+            - next_number: Current next_image_number counter value
+        """
+        nested_count = 0
+        flat_count = 0
+        nested_splats = 0
+        flat_splats = 0
+        nested_ids = set()
+
+        # Count nested images and collect IDs
+        if self.generations_dir.exists():
+            for date_dir in self.generations_dir.iterdir():
+                if not date_dir.is_dir():
+                    continue
+                for gen_dir in date_dir.iterdir():
+                    if gen_dir.is_dir():
+                        # Check if source.png exists in corresponding images dir
+                        date_str = date_dir.name
+                        image_path = self.images_dir / date_str / gen_dir.name / "source.png"
+                        if image_path.exists():
+                            nested_count += 1
+                            nested_ids.add(gen_dir.name)
+
+        # Count flat images (N.png pattern)
+        if self.images_dir.exists():
+            for item in self.images_dir.iterdir():
+                if item.is_file() and item.suffix == ".png":
+                    # Check if filename is a number
+                    try:
+                        int(item.stem)
+                        flat_count += 1
+                    except ValueError:
+                        pass
+
+        # Count splats
+        if self.splats_dir.exists():
+            for item in self.splats_dir.iterdir():
+                if item.is_file() and item.suffix == ".spz":
+                    if item.stem.startswith("gen-"):
+                        nested_splats += 1
+                    else:
+                        try:
+                            int(item.stem)
+                            flat_splats += 1
+                        except ValueError:
+                            pass
+
+        # Get registry
+        registry = self.get_image_registry()
+        registered_ids = set(registry.keys())
+
+        # Find unregistered nested IDs
+        unregistered = nested_ids - registered_ids
+
+        # Get current counter value
+        profile = self.load_profile()
+        next_number = profile.next_image_number
+
+        return {
+            "nested_images": nested_count,
+            "flat_images": flat_count,
+            "registered": len(registry),
+            "nested_splats": nested_splats,
+            "flat_splats": flat_splats,
+            "unregistered": list(unregistered),
+            "next_number": next_number,
+        }
