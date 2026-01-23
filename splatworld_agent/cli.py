@@ -2661,11 +2661,16 @@ def update():
     """Update SplatWorld Agent to the latest version.
 
     Pulls the latest changes from the git repository.
+    Shows current and available versions during update.
     """
     import subprocess
 
     # Find the package directory
     package_dir = Path(__file__).parent.parent
+    version_file = package_dir / "VERSION"
+
+    # Read current version
+    current_version = __version__
 
     # Check if it's a git repo
     git_dir = package_dir / ".git"
@@ -2674,10 +2679,11 @@ def update():
         console.print(f"[dim]Package location: {package_dir}[/dim]")
         sys.exit(1)
 
-    console.print(f"[dim]Updating from: {package_dir}[/dim]")
+    console.print(f"[bold]SplatWorld Agent[/bold] v{current_version}")
+    console.print(f"[dim]Location: {package_dir}[/dim]")
 
     try:
-        # Fetch first to see what's available
+        # Fetch first to see what's available (with 30-second timeout)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -2685,16 +2691,38 @@ def update():
         ) as progress:
             task = progress.add_task("Fetching updates...", total=None)
 
-            # Fetch
-            result = subprocess.run(
-                ["git", "fetch"],
-                cwd=package_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                console.print(f"[red]Fetch failed:[/red] {result.stderr}")
+            # Fetch with timeout
+            try:
+                result = subprocess.run(
+                    ["git", "fetch"],
+                    cwd=package_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                console.print("\n[red]Error: Network timeout while fetching updates.[/red]")
+                console.print("[yellow]Check your internet connection and try again.[/yellow]")
                 sys.exit(1)
+
+            if result.returncode != 0:
+                console.print(f"\n[red]Fetch failed:[/red] {result.stderr}")
+                sys.exit(1)
+
+            # Get remote version if available
+            remote_version = None
+            try:
+                result = subprocess.run(
+                    ["git", "show", "origin/main:VERSION"],
+                    cwd=package_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    remote_version = result.stdout.strip()
+            except (subprocess.TimeoutExpired, Exception):
+                pass  # Remote version display is optional
 
             # Check for updates
             result = subprocess.run(
@@ -2707,13 +2735,18 @@ def update():
 
             if not new_commits or new_commits == [""]:
                 progress.update(task, description="[green]Already up to date!")
-                console.print("\n[green]SplatWorld Agent is already up to date.[/green]")
+                console.print(f"\n[green]SplatWorld Agent v{current_version} is already up to date.[/green]")
                 return
 
             progress.update(task, description=f"Found {len(new_commits)} new commits...")
 
+            # Show version transition if available
+            if remote_version and remote_version != current_version:
+                console.print(f"\n[bold cyan]Updating: v{current_version} -> v{remote_version}[/bold cyan]")
+            else:
+                console.print(f"\n[bold]New updates available:[/bold]")
+
             # Show what's coming
-            console.print(f"\n[bold]New updates available:[/bold]")
             for commit in new_commits[:10]:
                 console.print(f"  [cyan]{commit}[/cyan]")
             if len(new_commits) > 10:
@@ -2726,25 +2759,45 @@ def update():
                 cwd=package_dir,
                 capture_output=True,
                 text=True,
+                timeout=60,
             )
 
             if result.returncode != 0:
-                console.print(f"[red]Pull failed:[/red] {result.stderr}")
-                console.print("[yellow]You may have local changes. Try:[/yellow]")
-                console.print(f"  cd {package_dir} && git stash && git pull && git stash pop")
+                error_msg = result.stderr.strip()
+                console.print(f"\n[red]Pull failed:[/red] {error_msg}")
+                if "local changes" in error_msg.lower() or "would be overwritten" in error_msg.lower():
+                    console.print("\n[yellow]You have local changes that would be overwritten.[/yellow]")
+                    console.print("Options:")
+                    console.print(f"  1. Stash changes:  cd {package_dir} && git stash && git pull && git stash pop")
+                    console.print(f"  2. Discard changes: cd {package_dir} && git checkout . && git pull")
+                else:
+                    console.print("[yellow]Try pulling manually:[/yellow]")
+                    console.print(f"  cd {package_dir} && git pull --ff-only")
                 sys.exit(1)
 
             progress.update(task, description="[green]Update complete!")
 
+        # Read the new version after update
+        new_version = current_version
+        if version_file.exists():
+            new_version = version_file.read_text().strip()
+
+        # Show success panel with version info
+        version_info = f"v{new_version}" if new_version == current_version else f"v{current_version} -> v{new_version}"
         console.print(Panel.fit(
             f"[bold green]Updated Successfully![/bold green]\n\n"
-            f"Pulled {len(new_commits)} new commit(s).\n\n"
+            f"Version: {version_info}\n"
+            f"Commits: {len(new_commits)} new commit(s)\n\n"
             f"[dim]Run '/splatworld:help' to see new commands.[/dim]",
             title="SplatWorld Agent",
         ))
 
     except FileNotFoundError:
         console.print("[red]Error: git not found. Please install git.[/red]")
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        console.print("\n[red]Error: Operation timed out.[/red]")
+        console.print("[yellow]Check your internet connection and try again.[/yellow]")
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]Update failed:[/red] {e}")
