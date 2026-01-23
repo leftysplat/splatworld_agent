@@ -25,18 +25,7 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
   - Nano Banana Pro or Gemini (image generation)
   - Anthropic (prompt enhancement)
 
-### Option 1: Plugin System (Recommended)
-
-Add the marketplace and install:
-
-```
-/plugin marketplace add leftysplat/splatworld
-/plugin install splatworld@splatworld-marketplace
-```
-
-This installs the plugin and makes all `/splatworld:*` commands available immediately.
-
-### Option 2: Manual Install
+### Install
 
 Clone to the Claude plugins directory:
 
@@ -45,6 +34,8 @@ git clone https://github.com/leftysplat/splatworld.git ~/.claude/splatworld
 ```
 
 Restart Claude Code. Commands will be available as `/splatworld:*`.
+
+> **Note:** Plugin marketplace installation (`/plugin install`) is not yet supported due to a [Claude Code limitation](https://github.com/anthropics/claude-code/issues/9354) with path resolution. Use the manual install method above.
 
 ### Updating
 
