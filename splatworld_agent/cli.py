@@ -206,8 +206,9 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
     console.print(f"\n[bold]Generating:[/bold] {enhanced_prompt}")
 
-    # Create generation ID
+    # Create generation ID and get image number for flat structure
     gen_id = f"gen-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    image_number = manager.get_next_image_number()
 
     # Select image generator
     gen_name = generator or config.defaults.image_generator
@@ -233,21 +234,42 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
             progress.update(task, description="[green]Image generated!")
 
-            # Save the generation
+            # Save the generation (dual-write: nested for backward compat, flat for new structure)
+            gen_timestamp = datetime.now()
             image_dir, metadata_dir = manager.save_generation(Generation(
                 id=gen_id,
                 prompt=prompt_text,
                 enhanced_prompt=enhanced_prompt,
-                timestamp=datetime.now(),
-                metadata={"generator": gen_name, "seed": seed},
+                timestamp=gen_timestamp,
+                metadata={"generator": gen_name, "seed": seed, "image_number": image_number},
             ))
 
-            # Save image to visible directory
+            # Save image to flat structure (N.png)
+            flat_image_path = manager.get_flat_image_path(image_number)
+            manager.images_dir.mkdir(exist_ok=True)
+            with open(flat_image_path, "wb") as f:
+                f.write(image_bytes)
+
+            # Also save to nested structure for backward compat
             image_path = image_dir / "source.png"
             with open(image_path, "wb") as f:
                 f.write(image_bytes)
 
-            console.print(f"\n[green]Image saved:[/green] {image_path}")
+            # Save flat metadata
+            manager.save_image_metadata(image_number, {
+                "id": gen_id,
+                "image_number": image_number,
+                "prompt": prompt_text,
+                "enhanced_prompt": enhanced_prompt,
+                "timestamp": gen_timestamp.isoformat(),
+                "generator": gen_name,
+                "seed": seed,
+            })
+
+            # Register mapping from gen_id to image_number
+            manager.register_image(gen_id, image_number)
+
+            console.print(f"\n[green]Image {image_number} saved:[/green] {flat_image_path}")
 
             # Step 2: Convert to 3D splat (if requested)
             splat_path = None
@@ -272,13 +294,13 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                     on_progress=on_progress,
                 )
 
-                # Download splat file to visible splats directory
+                # Download splat file to visible splats directory (flat: N.spz)
                 if result.splat_url and config.defaults.download_splats:
                     manager.splats_dir.mkdir(exist_ok=True)
-                    splat_path = manager.splats_dir / f"{gen_id}.spz"
+                    splat_path = manager.get_flat_splat_path(image_number)
                     try:
                         marble.download_file(result.splat_url, splat_path)
-                        console.print(f"[green]Splat saved:[/green] {splat_path}")
+                        console.print(f"[green]Splat {image_number} saved:[/green] {splat_path}")
                     except Exception as e:
                         splat_path = None
                         error_msg = str(e)
@@ -309,12 +331,13 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
             elif not no_splat and not config.api_keys.marble:
                 console.print("[yellow]Skipping 3D conversion (no Marble API key configured)[/yellow]")
 
-            # Update generation metadata with paths
+            # Update generation metadata with paths (nested structure for backward compat)
             metadata_path = metadata_dir / "metadata.json"
             with open(metadata_path) as f:
                 gen_data = json.load(f)
 
-            gen_data["source_image_path"] = str(image_path)
+            gen_data["source_image_path"] = str(flat_image_path)
+            gen_data["image_number"] = image_number
             if splat_path:
                 gen_data["splat_path"] = str(splat_path)
             if mesh_path:
@@ -329,8 +352,8 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
                 json.dump(gen_data, f, indent=2)
 
         console.print(f"\n[bold green]Generation complete![/bold green]")
-        console.print(f"[dim]ID: {gen_id}[/dim]")
-        console.print("\nUse [cyan]splatworld feedback ++[/cyan] to love it, or [cyan]-- [/cyan] to hate it.")
+        console.print(f"[dim]Image {image_number} (ID: {gen_id})[/dim]")
+        console.print(f"\nUse [cyan]splatworld rate {image_number} ++[/cyan] to love it, or [cyan]splatworld rate {image_number} --[/cyan] to hate it.")
 
     except Exception as e:
         console.print(f"\n[red]Generation failed:[/red] {e}")
