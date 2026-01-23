@@ -1,0 +1,11 @@
+{
+  "name": "splatworld",
+  "version": "1.6.0",
+  "description": "Iterative 3D Gaussian splat generation with taste learning",
+  "author": {
+    "name": "SplatWorld Team"
+  },
+  "repository": "https://github.com/leftyfl1p/splatworld",
+  "license": "MIT",
+  "keywords": ["3d", "gaussian-splatting", "image-generation", "ai", "taste-learning"]
+}
