@@ -27,6 +27,7 @@ from splatworld_agent.profile import ProfileManager
 from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHistoryEntry, ExplorationMode
 from splatworld_agent.learning import LearningEngine, enhance_prompt, PromptAdapter
 from splatworld_agent.display import display
+from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
 
 console = Console()
 
@@ -1581,7 +1582,7 @@ def learn(dry_run: bool):
 @main.command()
 @click.argument("args", nargs=-1, required=False)
 @click.option("--count", "-n", default=None, type=int, help="Number of images to generate (default: infinite until stopped)")
-@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator")
+@click.option("--generator", type=click.Choice(["nano", "gemini"]), default=None, help="Image generator (default: nano)")
 @click.option("--no-rate", "no_rate", is_flag=True, help="Generate without prompting for ratings (rate later with review)")
 @click.option("--single", is_flag=True, help="Generate exactly one image and exit (for scripted workflows)")
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON (for skill file parsing)")
@@ -1613,10 +1614,17 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
         sys.exit(1)
 
     profile = manager.load_profile()
-    gen_name = generator or config.defaults.image_generator
 
     # Check for existing training state to resume
     training_state = _load_training_state(manager)
+
+    # Determine generator: explicit flag > training_state > default (nano)
+    if generator:
+        gen_name = generator
+    elif training_state and training_state.get("provider"):
+        gen_name = training_state["provider"]
+    else:
+        gen_name = "nano"  # IGEN-01: Nano is default provider
 
     # Parse args: first arg could be count (if numeric) or start of prompt
     # /train 5 -> count=5, prompt from state
@@ -1668,10 +1676,8 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
             "status": "active",
         })
 
-    # Default to gemini if not specified (no interactive prompt needed)
-    if not generator:
-        gen_name = "gemini"
-        console.print("[dim]Using Gemini for image generation (use --generator nano for Nano Banana Pro)[/dim]")
+    # Show generator info
+    console.print(f"[dim]Using {gen_name.capitalize()} for image generation (use --generator to change)[/dim]")
 
     # Display training panel
     target_str = f"{count} images" if count else "until stopped"
@@ -1689,22 +1695,15 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
         title="SplatWorld Training",
     ))
 
-    # Initialize generators (both for fallback support)
-    from splatworld_agent.generators.nano import NanoGenerator
-    from splatworld_agent.generators.gemini import GeminiGenerator
-
-    nano_gen = NanoGenerator(api_key=config.api_keys.nano or config.api_keys.google)
-    gemini_gen = GeminiGenerator(api_key=config.api_keys.google)
-
-    # Primary generator based on choice (bidirectional fallback)
-    if gen_name == "nano":
-        img_gen = nano_gen
-        fallback_gen = gemini_gen
-        fallback_name = "gemini"
-    else:
-        img_gen = gemini_gen
-        fallback_gen = nano_gen
-        fallback_name = "nano"
+    # Initialize ProviderManager for image generation with failover support
+    api_keys = {
+        "nano": config.api_keys.nano or config.api_keys.google,
+        "google": config.api_keys.google,
+    }
+    provider_manager = ProviderManager(
+        api_keys=api_keys,
+        initial_provider=gen_name,
+    )
 
     # Initialize prompt adapter for variant generation
     adapter = PromptAdapter(api_key=config.api_keys.anthropic)
@@ -1765,53 +1764,32 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
             variant_id = f"var-{uuid.uuid4().hex[:12]}"
 
             final_prompt = variant.variant_prompt if variant else enhanced_prompt
-            actual_generator = gen_name  # Track which generator was actually used
+            current_provider = provider_manager.get_state().current_provider
 
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task(f"Generating image with {gen_name}...", total=None)
+                task = progress.add_task(f"Generating image with {current_provider}...", total=None)
 
                 try:
-                    image_bytes = img_gen.generate(final_prompt, seed=None)
+                    image_bytes, gen_metadata = provider_manager.generate(
+                        final_prompt,
+                        seed=training_state.get("seed") if training_state else None,
+                    )
+                    actual_generator = gen_metadata["provider"]
+                except ProviderFailureError as e:
+                    # IGEN-02: Signal failure with available fallback
+                    # For now, report error and suggest manual switch. Plan 03 adds user consent flow.
+                    console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
+                    console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                    cancelled = True
+                    break
                 except Exception as gen_error:
-                    # Check if this is a recoverable error and we have a fallback
-                    error_str = str(gen_error).lower()
-                    is_recoverable_error = any(term in error_str for term in [
-                        "quota", "rate limit", "exhausted", "limit exceeded",
-                        "too many requests", "429", "resource_exhausted",
-                        "404", "not found", "not available", "does not exist",
-                        "model", "invalid", "503", "500", "unavailable"
-                    ])
-
-                    if is_recoverable_error and fallback_gen is not None:
-                        progress.update(task, description=f"[yellow]{gen_name} failed, trying {fallback_name}...")
-                        console.print(f"\n[yellow]⚠ {gen_name} error: {gen_error}[/yellow]")
-                        console.print(f"[yellow]  Switching to {fallback_name}...[/yellow]")
-
-                        try:
-                            image_bytes = fallback_gen.generate(final_prompt, seed=None)
-                            actual_generator = fallback_name
-                            # Switch to fallback for remaining images
-                            img_gen = fallback_gen
-                            gen_name = fallback_name
-                            fallback_gen = None
-                            console.print(f"[green]✓ Switched to {gen_name} for remaining images[/green]")
-                        except Exception as fallback_error:
-                            console.print(f"\n[red]Both generators failed:[/red]")
-                            console.print(f"  {gen_name}: {gen_error}")
-                            console.print(f"  {fallback_name}: {fallback_error}")
-                            console.print("[dim]Try again later when quota resets.[/dim]")
-                            cancelled = True
-                            break
-                    else:
-                        console.print(f"\n[red]Image generation failed: {gen_error}[/red]")
-                        if fallback_gen is None:
-                            console.print("[dim]No fallback generator available.[/dim]")
-                        cancelled = True
-                        break
+                    console.print(f"\n[red]Image generation failed: {gen_error}[/red]")
+                    cancelled = True
+                    break
 
                 # Get global image number for flat structure
                 image_number = manager.get_next_image_number()
@@ -1950,10 +1928,11 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
         cancelled = True
 
     finally:
-        img_gen.close()
+        provider_manager.close()
 
-        # Update training state
+        # Update training state with provider for session continuity
         status = "cancelled" if cancelled else "completed"
+        final_provider = provider_manager.get_state().current_provider
         _save_training_state(manager, {
             "session_id": session_id,
             "base_prompt": prompt_text,
@@ -1962,6 +1941,7 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
             "started_at": training_state.get("started_at") if training_state else datetime.now().isoformat(),
             "ended_at": datetime.now().isoformat(),
             "status": status,
+            "provider": final_provider,  # Store provider for resume
         })
 
     # Show summary
