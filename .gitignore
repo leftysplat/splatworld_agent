@@ -65,3 +65,4 @@ test_output/
 .planning/
 generated_images/
 .splatworld/
+.planning/PROJECT.md
