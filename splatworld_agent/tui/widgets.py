@@ -147,3 +147,31 @@ class ResourcePanel(Static):
             parts.append(f"Credits: {self.credits_used}")
 
         return " | ".join(parts)
+
+
+class OutputLog(RichLog):
+    """Scrolling log for file paths and URLs as they become available.
+
+    Shows entries like:
+    - Saved: generated_images/42.png
+    - Viewer: https://marble.worldlabs.ai/world/abc123
+
+    Requirements: OUT-01, OUT-02
+    """
+
+    def __init__(self, **kwargs):
+        # Set defaults but allow override
+        kwargs.setdefault("markup", True)
+        kwargs.setdefault("highlight", True)
+        kwargs.setdefault("auto_scroll", True)
+        kwargs.setdefault("max_lines", 10)
+        kwargs.setdefault("min_width", 40)
+        super().__init__(**kwargs)
+
+    def log_saved(self, path: str) -> None:
+        """Log a saved file path with green prefix."""
+        self.write(f"[green]Saved:[/green] {path}")
+
+    def log_url(self, label: str, url: str) -> None:
+        """Log a URL with blue label prefix."""
+        self.write(f"[blue]{label}:[/blue] {url}")
