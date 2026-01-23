@@ -1837,35 +1837,62 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
                         cancelled = True
                         break
 
-                # Save generation
+                # Get global image number for flat structure
+                image_number = manager.get_next_image_number()
+
+                # Save generation (dual-write: nested for backward compat, flat for new structure)
+                gen_timestamp = datetime.now()
                 image_dir, metadata_dir = manager.save_generation(Generation(
                     id=gen_id,
                     prompt=prompt_text,
                     enhanced_prompt=final_prompt,
-                    timestamp=datetime.now(),
+                    timestamp=gen_timestamp,
                     metadata={
                         "generator": actual_generator,
                         "training_session": session_id,
                         "variant_id": variant_id,
-                        "image_number": images_generated,
+                        "image_number": image_number,
                     },
                 ))
 
+                # Save image to flat structure (N.png)
+                flat_image_path = manager.get_flat_image_path(image_number)
+                manager.images_dir.mkdir(exist_ok=True)
+                with open(flat_image_path, "wb") as f:
+                    f.write(image_bytes)
+
+                # Also save to nested structure for backward compat
                 image_path = image_dir / "source.png"
                 with open(image_path, "wb") as f:
                     f.write(image_bytes)
 
-                # Update metadata with path
+                # Save flat metadata
+                manager.save_image_metadata(image_number, {
+                    "id": gen_id,
+                    "image_number": image_number,
+                    "prompt": prompt_text,
+                    "enhanced_prompt": final_prompt,
+                    "timestamp": gen_timestamp.isoformat(),
+                    "generator": actual_generator,
+                    "training_session": session_id,
+                    "variant_id": variant_id,
+                })
+
+                # Register mapping from gen_id to image_number
+                manager.register_image(gen_id, image_number)
+
+                # Update nested metadata with paths
                 metadata_path = metadata_dir / "metadata.json"
                 with open(metadata_path) as f:
                     gen_data = json.load(f)
-                gen_data["source_image_path"] = str(image_path)
+                gen_data["source_image_path"] = str(flat_image_path)
+                gen_data["image_number"] = image_number
                 with open(metadata_path, "w") as f:
                     json.dump(gen_data, f, indent=2)
 
-                progress.update(task, description=f"[green]Image generated with {actual_generator}!")
+                progress.update(task, description=f"[green]Image {image_number} generated with {actual_generator}!")
 
-            console.print(f"[dim]File: {image_path}[/dim]")
+            console.print(f"[green]Image {image_number} saved:[/green] {flat_image_path}")
 
             # Don't auto-open image - let user view on their own
             # The file path is shown above so they can open it manually
@@ -1887,8 +1914,8 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool):
             rating = None
             if no_rate:
                 # Non-interactive mode: skip rating, user can rate later with review
-                console.print(f"[dim]Generated: {gen_id}[/dim]")
-                console.print(f"[dim]Rate later with: splatworld review --rate RATING -g {gen_id}[/dim]")
+                console.print(f"[dim]Generated: Image {image_number} ({gen_id})[/dim]")
+                console.print(f"[dim]Rate later with: splatworld review --rate RATING {image_number}[/dim]")
             else:
                 # Interactive mode: prompt for rating
                 while True:
