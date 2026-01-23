@@ -65,4 +65,6 @@ test_output/
 .planning/
 generated_images/
 .splatworld/
-.planning/PROJECT.md
+
+# Project planning (local only)
+PROJECT.md
