@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "splatworld-agent"
+name = "splatworld"
 version = "0.1.0"
 description = "Claude Code plugin for iterative 3D splat generation with taste learning"
 readme = "README.md"
@@ -49,16 +49,16 @@ dev = [
     "ruff>=0.1.0",
 ]
 all = [
-    "splatworld-agent[nano,gemini,dev]",
+    "splatworld[nano,gemini,dev]",
 ]
 
 [project.scripts]
-splatworld-agent = "splatworld_agent.cli:main"
+splatworld = "splatworld_agent.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/leftysplat/splatworld_agent"
-Documentation = "https://github.com/leftysplat/splatworld_agent#readme"
-Repository = "https://github.com/leftysplat/splatworld_agent"
+Homepage = "https://github.com/leftysplat/splatworld"
+Documentation = "https://github.com/leftysplat/splatworld#readme"
+Repository = "https://github.com/leftysplat/splatworld"
 
 [tool.setuptools.packages.find]
 where = ["."]
