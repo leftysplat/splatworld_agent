@@ -30,7 +30,7 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 Install as a Claude Code plugin:
 
 ```
-/plugin install splatworld --from https://github.com/leftyfl1p/splatworld
+/plugin install splatworld --from https://github.com/leftysplat/splatworld
 ```
 
 This installs the plugin and makes all `/splatworld:*` commands available immediately.
@@ -40,7 +40,7 @@ This installs the plugin and makes all `/splatworld:*` commands available immedi
 Clone to the Claude plugins directory:
 
 ```bash
-git clone https://github.com/leftyfl1p/splatworld.git ~/.claude/splatworld
+git clone https://github.com/leftysplat/splatworld.git ~/.claude/splatworld
 ```
 
 Restart Claude Code. Commands will be available as `/splatworld:*`.

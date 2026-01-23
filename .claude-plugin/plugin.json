@@ -5,7 +5,7 @@
   "author": {
     "name": "SplatWorld Team"
   },
-  "repository": "https://github.com/leftyfl1p/splatworld",
+  "repository": "https://github.com/leftysplat/splatworld",
   "license": "MIT",
   "keywords": ["3d", "gaussian-splatting", "image-generation", "ai", "taste-learning"]
 }
