@@ -2419,7 +2419,9 @@ def cancel_training():
 
 
 @main.command("resume")
-def resume_training():
+@click.option("--list-unrated", is_flag=True, help="List unrated images from session without interactive prompt")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON (for skill file parsing)")
+def resume_training(list_unrated: bool, json_output: bool):
     """Continue an interrupted training session (SESS-01, SESS-02).
 
     Prompts: "Continue training on unrated images, or start new generations?"
@@ -2429,6 +2431,7 @@ def resume_training():
 
     Example:
         splatworld resume
+        splatworld resume --list-unrated --json  # For skill files
     """
     project_dir = get_project_dir()
     if not project_dir:
@@ -2439,6 +2442,37 @@ def resume_training():
 
     # Check for training state
     training_state = _load_training_state(manager)
+
+    # JSON output mode: output session state and unrated images (for skill file parsing)
+    if list_unrated and json_output:
+        if not training_state:
+            print(json.dumps({"session": None, "unrated_images": []}))
+            return
+
+        session_id = training_state.get("session_id")
+        all_unrated = manager.get_all_unrated_generations()
+        unrated_in_session = []
+        for gen, batch_ctx in all_unrated:
+            if gen.metadata.get("training_session") == session_id:
+                img_num = manager.get_image_number_for_generation(gen.id)
+                unrated_in_session.append({
+                    "generation_id": gen.id,
+                    "image_number": img_num,
+                    "file_path": str(manager.get_flat_image_path(img_num)) if img_num else gen.source_image_path,
+                    "variant_prompt": gen.enhanced_prompt,
+                })
+
+        result = {
+            "session": {
+                "session_id": session_id,
+                "base_prompt": training_state.get("base_prompt", ""),
+                "images_generated": training_state.get("images_generated", 0),
+                "status": training_state.get("status", "unknown"),
+            },
+            "unrated_images": unrated_in_session,
+        }
+        print(json.dumps(result))
+        return
 
     if not training_state:
         console.print("[yellow]No training session to resume.[/yellow]")
