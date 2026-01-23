@@ -900,6 +900,18 @@ class ProfileManager:
 
         return self.get_generation(generation_id)
 
+    def get_image_number_for_generation(self, generation_id: str) -> Optional[int]:
+        """Get the sequential image number for a generation ID.
+
+        Args:
+            generation_id: The generation UUID/ID
+
+        Returns:
+            The sequential image number, or None if not registered
+        """
+        registry = self.get_image_registry()
+        return registry.get(generation_id)
+
     # Flat file structure methods (FILE-02 Expand phase)
 
     @property

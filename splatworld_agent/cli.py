@@ -878,7 +878,12 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
 
         rating_display = {"++": "[green]Love it![/green]", "+": "[green]Good[/green]",
                           "-": "[yellow]Not great[/yellow]", "--": "[red]Hate it[/red]"}
-        console.print(f"Rated {gen.id}: {rating_display[rate_value]}")
+        # Show image number if available, otherwise show legacy ID
+        image_number = manager.get_image_number_for_generation(gen.id)
+        if image_number:
+            console.print(f"Rated Image {image_number}: {rating_display[rate_value]}")
+        else:
+            console.print(f"Rated Legacy: {gen.id[:8]}...: {rating_display[rate_value]}")
         console.print(f"[dim]Prompt: {gen.prompt[:50]}...[/dim]")
         return
 
@@ -889,12 +894,21 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
             console.print("[green]All images have been rated![/green]")
             return
 
+        # Build list with image numbers
+        lines = []
+        for g, _ in unrated_gens[:limit]:
+            image_num = manager.get_image_number_for_generation(g.id)
+            if image_num:
+                lines.append(f"  [cyan]Image {image_num}[/cyan]: {g.prompt[:45]}...")
+            else:
+                lines.append(f"  [dim]Legacy: {g.id[:8]}...[/dim]: {g.prompt[:45]}...")
+
         console.print(Panel.fit(
             f"[bold]Unrated Images ({len(unrated_gens)})[/bold]\n\n" +
-            "\n".join(f"  [cyan]{g.id}[/cyan]: {g.prompt[:45]}..." for g, _ in unrated_gens[:limit]),
+            "\n".join(lines),
             title="Review",
         ))
-        console.print(f"\n[dim]Use --rate RATING -g ID to rate an image[/dim]")
+        console.print(f"\n[dim]Use 'splatworld rate N RATING' to rate an image[/dim]")
         return
 
     # --all flag: Review ALL unrated images across all batches
@@ -924,13 +938,41 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
         total = len(unrated_with_context)
 
         for i, (gen, batch_ctx) in enumerate(unrated_with_context, start=1):
-            console.print(f"\n[bold cyan]Image {i}[/bold cyan] of {total}")
+            # Show image number if available, otherwise show legacy ID
+            image_number = manager.get_image_number_for_generation(gen.id)
+            if image_number:
+                console.print(f"\n[bold cyan]Image {image_number}[/bold cyan] ({i} of {total})")
+                # Show flat file path
+                flat_path = f"generated_images/{image_number}.png"
+            else:
+                console.print(f"\n[bold cyan]Legacy: {gen.id[:8]}...[/bold cyan] ({i} of {total})")
+                flat_path = None
+
             console.print(format_batch_context(batch_ctx))
             console.print(f"Prompt: {gen.prompt}")
 
-            if gen.source_image_path:
+            # Show file path
+            if flat_path:
                 if inline:
-                    # Inline preview mode
+                    # Inline preview mode - try flat path first
+                    flat_full_path = manager.images_dir / f"{image_number}.png"
+                    if flat_full_path.exists():
+                        displayed = display.display_image(flat_full_path, max_width=80)
+                        if displayed:
+                            console.print("[dim]Preview shown above[/dim]")
+                        else:
+                            console.print(f"[cyan]File: {flat_path}[/cyan]")
+                    elif gen.source_image_path:
+                        displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+                        if displayed:
+                            console.print("[dim]Preview shown above[/dim]")
+                        else:
+                            console.print(f"[cyan]File: {flat_path}[/cyan]")
+                else:
+                    console.print(f"[cyan]File: {flat_path}[/cyan]")
+            elif gen.source_image_path:
+                if inline:
+                    # Inline preview mode for legacy images
                     displayed = display.display_image(Path(gen.source_image_path), max_width=80)
                     if displayed:
                         console.print("[dim]Preview shown above[/dim]")
@@ -1035,8 +1077,14 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
     loved = 0
 
     for i, gen in enumerate(generations, start=1):
-        # Show image number prominently
-        console.print(f"\n[bold cyan]Image {i}[/bold cyan] of {len(generations)}")
+        # Show image number if available, otherwise show legacy ID
+        image_number = manager.get_image_number_for_generation(gen.id)
+        if image_number:
+            console.print(f"\n[bold cyan]Image {image_number}[/bold cyan] ({i} of {len(generations)})")
+            flat_path = f"generated_images/{image_number}.png"
+        else:
+            console.print(f"\n[bold cyan]Legacy: {gen.id[:8]}...[/bold cyan] ({i} of {len(generations)})")
+            flat_path = None
 
         # Show batch index if available
         batch_index = gen.metadata.get("batch_index")
@@ -1046,9 +1094,27 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
         console.print(f"Prompt: {gen.prompt}")
 
         # Show image path
-        if gen.source_image_path:
+        if flat_path:
             if inline:
-                # Inline preview mode
+                # Inline preview mode - try flat path first
+                flat_full_path = manager.images_dir / f"{image_number}.png"
+                if flat_full_path.exists():
+                    displayed = display.display_image(flat_full_path, max_width=80)
+                    if displayed:
+                        console.print("[dim]Preview shown above[/dim]")
+                    else:
+                        console.print(f"[cyan]File: {flat_path}[/cyan]")
+                elif gen.source_image_path:
+                    displayed = display.display_image(Path(gen.source_image_path), max_width=80)
+                    if displayed:
+                        console.print("[dim]Preview shown above[/dim]")
+                    else:
+                        console.print(f"[cyan]File: {flat_path}[/cyan]")
+            else:
+                console.print(f"[cyan]File: {flat_path}[/cyan]")
+        elif gen.source_image_path:
+            if inline:
+                # Inline preview mode for legacy images
                 displayed = display.display_image(Path(gen.source_image_path), max_width=80)
                 if displayed:
                     console.print("[dim]Preview shown above[/dim]")
@@ -1107,17 +1173,19 @@ def review(batch: str, current: bool, limit: int, unrated: bool, all_unrated: bo
 
 
 @main.command()
+@click.argument("image_nums", nargs=-1, type=int, required=False)
 @click.option("--all-loved", is_flag=True, help="Convert all '++' rated images")
 @click.option("--all-positive", is_flag=True, help="Convert all positively rated (+ and ++)")
-@click.option("--generation", "-g", multiple=True, help="Specific generation IDs to convert")
-@click.option("--list", "list_only", is_flag=True, help="Just list available generations, don't convert")
-def convert(all_loved: bool, all_positive: bool, generation: tuple, list_only: bool):
+@click.option("--list", "list_only", is_flag=True, help="Just list available images, don't convert")
+def convert(image_nums: tuple, all_loved: bool, all_positive: bool, list_only: bool):
     """Convert loved images to 3D splats.
 
     Usage:
-      convert --list              Show available generations
-      convert -g <id>             Convert specific generation
+      convert --list              Show available images
+      convert 1 3                 Convert images 1 and 3
       convert --all-loved         Convert all '++' rated images
+
+    Accepts image numbers (from batch or review commands).
     """
     project_dir = get_project_dir()
     if not project_dir:
