@@ -34,6 +34,7 @@ dependencies = [
     "term-image>=0.7.2",
     "Pillow",
     "tenacity>=9.0.0",
+    "textual>=0.48.0",  # TUI framework for inline progress display
 ]
 
 [project.optional-dependencies]
@@ -48,6 +49,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
+    "textual-dev>=1.0.0",  # TUI debugging tools
 ]
 all = [
     "splatworld[nano,gemini,dev]",
