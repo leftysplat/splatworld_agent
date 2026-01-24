@@ -721,6 +721,14 @@ Feedback is collected but preferences only update when you run `/splatworld:lear
 
 MIT
 
+## Resources
+
+To set up your World Labs API and purchase API credits: https://platform.worldlabs.ai/
+
+To set up your Claude API and purchase API credits: https://platform.claude.com/settings/keys
+
+To set up your Nano Banana Pro API and purchase API credits: https://aistudio.google.com/api-keys
+
 ## Related Projects
 
 - [splatworld_framework](https://github.com/leftysplat/splatworld_framework) - Batch splat generation
