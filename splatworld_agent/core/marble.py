@@ -219,7 +219,7 @@ class MarbleClient:
     def wait_for_completion(
         self,
         operation_id: str,
-        timeout: float = 600.0,
+        timeout: float = 900.0,
         poll_interval: float = 10.0,
         on_progress: Optional[Callable[[str, str], None]] = None,
     ) -> Operation:
@@ -228,7 +228,7 @@ class MarbleClient:
 
         Args:
             operation_id: The operation ID to wait for
-            timeout: Maximum wait time in seconds (default 10 minutes)
+            timeout: Maximum wait time in seconds (default 15 minutes)
             poll_interval: Time between polls in seconds
             on_progress: Optional callback called with (status, description)
 
@@ -262,7 +262,7 @@ class MarbleClient:
         mime_type: str = "image/png",
         display_name: str = "Generated World",
         is_panorama: bool = False,
-        timeout: float = 600.0,
+        timeout: float = 900.0,
         on_progress: Optional[Callable[[str, str], None]] = None,
     ) -> MarbleResult:
         """
