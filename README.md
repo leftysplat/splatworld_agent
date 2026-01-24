@@ -2,17 +2,6 @@
 
 A Claude Code plugin for iterative 3D Gaussian splat generation with taste learning. The agent learns your aesthetic preferences over time and applies them to future generations.
 
-## Overview
-
-**splatworld_agent** is different from [splatworld_framework](https://github.com/leftysplat/splatworld_framework):
-
-| | splatworld_framework | splatworld_agent |
-|---|---|---|
-| Purpose | Batch production | Creative exploration |
-| Interaction | "Generate 50 warehouse scenes" | "Help me find my style" |
-| Learning | None | Learns your preferences |
-| Output | Volume, consistency | Quality, personal taste |
-
 ## Installation
 
 ### Prerequisites
@@ -729,9 +718,3 @@ To set up your Claude API and purchase API credits: https://platform.claude.com/
 
 To set up your Nano Banana Pro API and purchase API credits: https://aistudio.google.com/api-keys
 
-## Related Projects
-
-- [splatworld_framework](https://github.com/leftysplat/splatworld_framework) - Batch splat generation
-- [splatworld_site](https://github.com/leftysplat/splatworld_site) - Autonomous research agent
-- [splatworld_explore](https://github.com/leftysplat/splatworld_explore) - 3D splat viewer
-- [splatworld_labeler](https://github.com/leftysplat/splatworld_labeler) - Scene annotation schemas
