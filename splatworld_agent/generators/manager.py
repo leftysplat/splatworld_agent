@@ -4,8 +4,8 @@ Provider manager for multi-provider image generation.
 Implements Strategy pattern for provider selection with:
 - Lazy loading of generators
 - Retry logic with tenacity for transient failures
+- Automatic provider chain failover (FLUX -> Nano -> Gemini)
 - Provider state tracking for mid-session switching (IGEN-04)
-- Failure signaling for user consent flows (IGEN-02)
 """
 
 from datetime import datetime
@@ -26,36 +26,27 @@ from ..models import ProviderState
 logger = logging.getLogger(__name__)
 
 
-class ProviderFailureError(Exception):
-    """Raised when provider fails and fallback is available.
-
-    IGEN-02 requires user consent for automatic fallback.
-    Caller should catch this and prompt user before switching.
-    """
-
-    def __init__(self, provider: str, fallback_available: str, original_error: Exception):
-        self.provider = provider
-        self.fallback_available = fallback_available
-        self.original_error = original_error
-        super().__init__(f"{provider} failed: {original_error}")
-
-
 class ProviderManager:
-    """Manages image generation providers with failover and credit tracking.
+    """Manages image generation providers with automatic failover and credit tracking.
 
-    Implements Strategy pattern where the active provider can be switched
-    at runtime without losing session state.
+    Implements Strategy pattern with automatic three-tier failover:
+    1. FLUX.2 [pro] (if BFL_API_KEY configured) - PROV-01
+    2. Nano Banana Pro (if available) - PROV-02
+    3. Gemini (if GOOGLE_API_KEY configured) - PROV-03
+
+    Failover is automatic and transparent - no user intervention required.
 
     Usage:
-        manager = ProviderManager(api_keys={"nano": "...", "google": "..."})
+        manager = ProviderManager(api_keys={"bfl": "...", "nano": "...", "google": "..."})
 
         try:
             image_bytes, metadata = manager.generate("a cozy cabin")
-        except ProviderFailureError as e:
-            # Ask user for consent to switch
-            if user_consents:
-                manager.switch_provider(e.fallback_available)
-                image_bytes, metadata = manager.generate("a cozy cabin")
+            # Automatically tries FLUX -> Nano -> Gemini until success
+            if metadata.get("failover_occurred"):
+                print(f"Failed over to {metadata['provider']}")
+        except RuntimeError as e:
+            # Only raised if all providers fail
+            print(f"Generation failed: {e}")
 
         state = manager.get_state()
         if state.should_warn:
@@ -65,18 +56,24 @@ class ProviderManager:
     def __init__(
         self,
         api_keys: dict,
-        initial_provider: str = "nano",  # IGEN-01: Nano is default
+        initial_provider: Optional[str] = None,  # Auto-determined from available keys
         credits_limit: Optional[int] = None,
     ):
         """
         Initialize the provider manager.
 
         Args:
-            api_keys: Dict with keys "nano" and/or "google" for API keys
-            initial_provider: Starting provider ("nano" or "gemini")
+            api_keys: Dict with keys "bfl", "nano", and/or "google" for API keys
+            initial_provider: Starting provider (auto-determined if None)
             credits_limit: Optional credit limit for usage warnings
         """
         self.api_keys = api_keys
+
+        # Determine initial provider from available keys (PROV-01: FLUX first if available)
+        if initial_provider is None:
+            chain = self._get_available_provider_chain()
+            initial_provider = chain[0] if chain else "nano"
+
         self.state = ProviderState(
             current_provider=initial_provider,
             credits_limit=credits_limit,
@@ -114,6 +111,26 @@ class ProviderManager:
                 self._gemini = GeminiGenerator(api_key=api_key)
             return self._gemini
 
+    def _get_available_provider_chain(self) -> list[str]:
+        """Build provider chain based on configured API keys.
+
+        Returns providers in priority order:
+        - PROV-01: FLUX first if BFL_API_KEY configured
+        - PROV-02: Nano second if NANO_API_KEY or GOOGLE_API_KEY configured
+        - PROV-03: Gemini third if GOOGLE_API_KEY configured
+
+        Returns:
+            List of provider names in priority order
+        """
+        chain = []
+        if self.api_keys.get("bfl"):
+            chain.append("flux")
+        if self.api_keys.get("nano") or self.api_keys.get("google"):
+            chain.append("nano")
+        if self.api_keys.get("google"):
+            chain.append("gemini")
+        return chain
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -141,7 +158,10 @@ class ProviderManager:
         **kwargs
     ) -> Tuple[bytes, dict]:
         """
-        Generate image with current provider.
+        Generate image with automatic provider chain failover.
+
+        Attempts generation with each provider in the chain (FLUX -> Nano -> Gemini)
+        until success. Failover is automatic and transparent.
 
         Args:
             prompt: The generation prompt
@@ -150,41 +170,79 @@ class ProviderManager:
 
         Returns:
             Tuple of (image_bytes, metadata_dict)
+            metadata_dict includes:
+                - provider: Provider that succeeded
+                - failover_occurred: True if not first provider in chain
+                - attempted_providers: List of providers tried before success
+                - credits_used, generation_count, usage_percentage
 
         Raises:
-            ProviderFailureError: If provider fails and fallback available
-                                  (caller should handle user consent)
-            RuntimeError: If generation fails with no fallback
+            RuntimeError: If all providers in chain fail
         """
-        provider = self._get_provider(self.state.current_provider)
+        provider_chain = self._get_available_provider_chain()
 
-        try:
-            image_bytes = self._generate_with_retry(provider, prompt, seed, **kwargs)
+        if not provider_chain:
+            raise RuntimeError("No image generation providers available. Configure BFL_API_KEY, NANO_API_KEY, or GOOGLE_API_KEY.")
 
-            # Update state
-            self.state.generation_count += 1
-            self.state.credits_used += 1  # Simplified: 1 credit per generation
+        attempted_providers = []
+        last_error = None
+        first_provider = provider_chain[0]
 
-            return image_bytes, {
-                "provider": self.state.current_provider,
-                "credits_used": self.state.credits_used,
-                "generation_count": self.state.generation_count,
-                "usage_percentage": self.state.usage_percentage,
-            }
+        for provider_name in provider_chain:
+            attempted_providers.append(provider_name)
 
-        except (httpx.HTTPStatusError, RuntimeError) as e:
-            # IGEN-02: Signal failure with available fallback
-            if self.state.current_provider == "nano":
-                self.state.nano_failures += 1
-                # Don't auto-switch - let caller handle user consent
-                raise ProviderFailureError(
-                    provider="nano",
-                    fallback_available="gemini",
-                    original_error=e
-                )
-            else:
-                # No fallback available from gemini
-                raise
+            try:
+                provider = self._get_provider(provider_name)
+                image_bytes = self._generate_with_retry(provider, prompt, seed, **kwargs)
+
+                # Success! Update state
+                failover_occurred = provider_name != first_provider
+                if failover_occurred:
+                    # Log failover event
+                    logger.info(f"Successfully failed over to {provider_name} after {', '.join(attempted_providers[:-1])} failed")
+                    # Track switch in state
+                    self.state.provider_switches.append({
+                        "from": attempted_providers[0] if attempted_providers else "none",
+                        "to": provider_name,
+                        "reason": "automatic_failover",
+                        "at": datetime.now().isoformat(),
+                    })
+
+                # Update current provider to actual provider used
+                self.state.current_provider = provider_name
+                self.state.generation_count += 1
+                self.state.credits_used += 1  # Simplified: 1 credit per generation
+
+                # Track nano failures if nano was attempted and failed
+                if "nano" in attempted_providers[:-1]:
+                    self.state.nano_failures += 1
+
+                return image_bytes, {
+                    "provider": provider_name,
+                    "failover_occurred": failover_occurred,
+                    "attempted_providers": attempted_providers,
+                    "credits_used": self.state.credits_used,
+                    "generation_count": self.state.generation_count,
+                    "usage_percentage": self.state.usage_percentage,
+                }
+
+            except (httpx.HTTPStatusError, RuntimeError, ValueError) as e:
+                # Provider failed, log and try next
+                last_error = e
+                logger.warning(f"Provider {provider_name} failed: {e}. Trying next provider in chain.")
+
+                # Track nano failures immediately when nano fails
+                if provider_name == "nano":
+                    self.state.nano_failures += 1
+
+                # Continue to next provider in chain
+                continue
+
+        # All providers failed
+        raise RuntimeError(
+            f"All providers failed. Attempted: {', '.join(attempted_providers)}. "
+            f"Last error: {last_error}"
+        )
 
     def switch_provider(self, new_provider: str, reason: str = "user_request") -> None:
         """
