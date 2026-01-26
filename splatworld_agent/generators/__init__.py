@@ -37,3 +37,8 @@ def get_nano_generator():
 def get_gemini_generator():
     from .gemini import GeminiGenerator
     return GeminiGenerator
+
+
+def get_flux_generator():
+    from .flux import FluxGenerator
+    return FluxGenerator

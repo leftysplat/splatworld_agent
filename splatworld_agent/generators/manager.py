@@ -85,6 +85,7 @@ class ProviderManager:
         # Lazy-loaded generators
         self._nano = None
         self._gemini = None
+        self._flux = None
 
     def _get_provider(self, provider_name: str):
         """Lazy-load and return the specified provider."""
@@ -96,6 +97,14 @@ class ProviderManager:
                     raise ValueError("No API key available for Nano provider")
                 self._nano = NanoGenerator(api_key=api_key)
             return self._nano
+        elif provider_name == "flux":
+            if self._flux is None:
+                from .flux import FluxGenerator
+                api_key = self.api_keys.get("bfl")
+                if not api_key:
+                    raise ValueError("No API key available for Flux provider")
+                self._flux = FluxGenerator(api_key=api_key)
+            return self._flux
         else:  # gemini
             if self._gemini is None:
                 from .gemini import GeminiGenerator
@@ -182,10 +191,10 @@ class ProviderManager:
         Switch to a different provider (IGEN-04).
 
         Args:
-            new_provider: Provider to switch to ("nano" or "gemini")
+            new_provider: Provider to switch to ("nano", "gemini", or "flux")
             reason: Why the switch happened (for tracking)
         """
-        if new_provider not in ("nano", "gemini"):
+        if new_provider not in ("nano", "gemini", "flux"):
             raise ValueError(f"Unknown provider: {new_provider}")
 
         old_provider = self.state.current_provider
@@ -211,6 +220,8 @@ class ProviderManager:
             self._nano.close()
         if self._gemini:
             self._gemini.close()
+        if self._flux:
+            self._flux.close()
 
     def __enter__(self):
         return self
