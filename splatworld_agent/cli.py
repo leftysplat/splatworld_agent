@@ -94,12 +94,51 @@ def init(path: str):
         console.print(f"[yellow]Project already initialized at {manager.splatworld_dir}[/yellow]")
         return
 
+    # Load existing global config (preserves keys from setup-keys command)
+    cfg = Config.load()
+
+    # Prompt for API keys BEFORE creating directories
+    console.print("\n[bold]API Key Setup[/bold]")
+    console.print("Configure image generation providers:\n")
+
+    # SETUP-01, SETUP-02: Prompt for FLUX key with skip option
+    flux_key = click.prompt(
+        "Enter FLUX API key or type 'skip'",
+        default="skip",
+        show_default=False
+    )
+    if flux_key.strip().lower() != "skip":
+        cfg.api_keys.bfl = flux_key.strip()
+
+    # SETUP-03: Prompt for Nano key
+    nano_key = click.prompt(
+        "Enter Nano Banana Pro API key or type 'skip'",
+        default="skip",
+        show_default=False
+    )
+    if nano_key.strip().lower() != "skip":
+        cfg.api_keys.nano = nano_key.strip()
+
+    # SETUP-04: Determine active_provider based on key priority (flux > nano > gemini)
+    if cfg.api_keys.bfl:
+        cfg.defaults.image_generator = "flux"
+    elif cfg.api_keys.nano:
+        cfg.defaults.image_generator = "nano"
+    elif cfg.api_keys.google:
+        cfg.defaults.image_generator = "gemini"
+    # If no keys, keep default ("nano")
+
+    # Save config before creating directories
+    cfg.save()
+
+    # Create profile (after all prompts succeed)
     profile = manager.initialize()
 
     console.print(Panel.fit(
         f"[green]Initialized SplatWorld Agent[/green]\n\n"
         f"Created: {manager.splatworld_dir}\n"
-        f"Profile: {manager.profile_path}\n\n"
+        f"Profile: {manager.profile_path}\n"
+        f"Active provider: {cfg.defaults.image_generator}\n\n"
         f"Your taste profile is empty. Generate some content and provide feedback to teach it your preferences.",
         title="SplatWorld Agent",
     ))
