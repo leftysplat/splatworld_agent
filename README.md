@@ -11,7 +11,7 @@ A Claude Code plugin for iterative 3D Gaussian splat generation with taste learn
 - git
 - API keys for:
   - World Labs Marble (3D conversion)
-  - Nano Banana Pro or Gemini (image generation)
+  - FLUX.2 [pro] via BFL (default image generator) — or Nano Banana Pro / Gemini as fallbacks
   - Anthropic (prompt enhancement)
 
 ### Install
@@ -37,26 +37,32 @@ This pulls the latest changes from the repository.
 
 ### Configure API Keys
 
-Create `~/.splatworld_agent/config.yaml`:
+The easiest way is to run `/splatworld:init` which will interactively prompt you for API keys.
+
+Or create `~/.splatworld_agent/config.yaml` manually:
 
 ```yaml
 api_keys:
   marble: "wlt-your-key-here"
-  nano: "your-nano-key-here"      # Default image generator
-  google: "your-google-key-here"  # Optional: Gemini alternative
+  bfl: "your-bfl-key-here"        # FLUX.2 [pro] - default generator
+  nano: "your-nano-key-here"      # Nano Banana Pro - first fallback
+  google: "your-google-key-here"  # Gemini - second fallback
   anthropic: "your-anthropic-key" # For taste-enhanced prompts
 
 defaults:
-  image_generator: nano  # or "gemini"
+  image_generator: flux  # or "nano" or "gemini"
 ```
 
 Or set environment variables:
 ```bash
 export WORLDLABS_API_KEY="wlt-..."
+export BFL_API_KEY="..."          # FLUX.2 [pro]
 export NANO_API_KEY="..."
 export GOOGLE_API_KEY="..."
 export ANTHROPIC_API_KEY="..."
 ```
+
+**Provider Chain:** When generating images, the system automatically tries providers in order: FLUX → Nano → Gemini. If one fails, it automatically falls back to the next available provider.
 
 ## Quick Start
 
@@ -71,7 +77,11 @@ Then in Claude Code:
 /splatworld:init
 ```
 
-This creates `.splatworld/` in your project with an empty taste profile.
+This will:
+1. Prompt you for your FLUX API key (or type "skip" to use Nano instead)
+2. Prompt you for your Nano Banana Pro API key (or type "skip")
+3. Set your active provider based on which keys you configured
+4. Create `.splatworld/` in your project with an empty taste profile
 
 ### 2. Generate Your First Splat
 
@@ -81,7 +91,7 @@ This creates `.splatworld/` in your project with an empty taste profile.
 
 The agent will:
 1. Enhance your prompt based on your taste profile (empty at first)
-2. Generate an image via Nano Banana Pro
+2. Generate an image via your configured provider (FLUX → Nano → Gemini fallback chain)
 3. Convert to 3D splat via Marble API
 4. Save to `.splatworld/generations/YYYY-MM-DD/`
 5. Show you the result and ask for feedback
@@ -196,7 +206,7 @@ splatworld generate [OPTIONS] PROMPT...
 | `--seed INTEGER` | Random seed for reproducibility |
 | `--no-enhance` | Don't enhance prompt with taste profile |
 | `--no-splat` | Skip 3D splat generation |
-| `--generator [nano\|gemini]` | Image generator to use |
+| `--generator [flux\|nano\|gemini]` | Image generator to use |
 
 **Example:**
 ```bash
@@ -212,7 +222,7 @@ splatworld batch [OPTIONS] PROMPT...
 |--------|-------------|
 | `-n, --count INTEGER` | Number of images per cycle (default: 5) |
 | `-c, --cycles INTEGER` | Number of generate-review-learn cycles |
-| `--generator [nano\|gemini]` | Image generator to use |
+| `--generator [flux\|nano\|gemini]` | Image generator to use |
 | `--inline` | Show inline image previews (iTerm2/Kitty/WezTerm) |
 
 **Example:**
@@ -229,7 +239,7 @@ splatworld train [OPTIONS] PROMPT...
 | Option | Description |
 |--------|-------------|
 | `-n, --images-per-round INTEGER` | Images to generate per round |
-| `--generator [nano\|gemini]` | Image generator to use |
+| `--generator [flux\|nano\|gemini]` | Image generator to use |
 
 Runs generate-review-learn cycles until calibrated (minimum 20 rated images).
 
@@ -610,19 +620,28 @@ so you can easily browse them in Finder or your file manager. Metadata is stored
 
 ## Image Generators
 
-### Nano Banana Pro (Default)
+### FLUX.2 [pro] (Default)
 
-Best quality results. Requires Nano API key.
+Highest quality results via Black Forest Labs API. Requires BFL API key.
 
 ```yaml
 # In config.yaml
 defaults:
+  image_generator: flux
+```
+
+### Nano Banana Pro (First Fallback)
+
+High quality alternative. Used when FLUX is unavailable.
+
+```yaml
+defaults:
   image_generator: nano
 ```
 
-### Google Gemini
+### Google Gemini (Second Fallback)
 
-Alternative option. Free tier available.
+Free tier available. Used when both FLUX and Nano are unavailable.
 
 ```yaml
 defaults:
@@ -713,6 +732,8 @@ MIT
 ## Resources
 
 To set up your World Labs API and purchase API credits: https://platform.worldlabs.ai/
+
+To set up your BFL API (FLUX.2 [pro]) and purchase API credits: https://api.bfl.ai/
 
 To set up your Claude API and purchase API credits: https://platform.claude.com/settings/keys
 
