@@ -22,6 +22,7 @@ class APIKeys:
     nano: str = ""
     google: str = ""
     anthropic: str = ""
+    bfl: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "APIKeys":
@@ -30,6 +31,7 @@ class APIKeys:
             nano=data.get("nano", ""),
             google=data.get("google", ""),
             anthropic=data.get("anthropic", ""),
+            bfl=data.get("bfl", ""),
         )
 
     @classmethod
@@ -40,6 +42,7 @@ class APIKeys:
             nano=os.getenv("NANO_API_KEY", ""),
             google=os.getenv("GOOGLE_API_KEY", ""),
             anthropic=os.getenv("ANTHROPIC_API_KEY", ""),
+            bfl=os.getenv("BFL_API_KEY", ""),
         )
 
     def merge_env(self) -> "APIKeys":
@@ -50,6 +53,7 @@ class APIKeys:
             nano=env_keys.nano or self.nano,
             google=env_keys.google or self.google,
             anthropic=env_keys.anthropic or self.anthropic,
+            bfl=env_keys.bfl or self.bfl,
         )
 
 
@@ -112,6 +116,7 @@ class Config:
                 "nano": self.api_keys.nano,
                 "google": self.api_keys.google,
                 "anthropic": self.api_keys.anthropic,
+                "bfl": self.api_keys.bfl,
             },
             "defaults": {
                 "image_generator": self.defaults.image_generator,
@@ -136,6 +141,8 @@ class Config:
             issues.append("Nano API key not configured (NANO_API_KEY)")
         elif self.defaults.image_generator == "gemini" and not self.api_keys.google:
             issues.append("Google API key not configured (GOOGLE_API_KEY)")
+        elif self.defaults.image_generator == "flux" and not self.api_keys.bfl:
+            issues.append("BFL API key not configured (BFL_API_KEY)")
 
         if not self.api_keys.anthropic:
             issues.append("Anthropic API key not configured (ANTHROPIC_API_KEY)")
