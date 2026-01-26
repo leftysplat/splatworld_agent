@@ -186,7 +186,7 @@ class GenerateTUI(App[GenerateResult]):
         from datetime import datetime
         import uuid
 
-        from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
+        from splatworld_agent.generators.manager import ProviderManager
         from splatworld_agent.learning import enhance_prompt, PromptAdapter
         from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
 
@@ -201,6 +201,7 @@ class GenerateTUI(App[GenerateResult]):
 
         # Initialize API clients
         api_keys = {
+            "bfl": self.config.api_keys.bfl,
             "nano": self.config.api_keys.nano or self.config.api_keys.google,
             "google": self.config.api_keys.google,
         }
@@ -254,11 +255,11 @@ class GenerateTUI(App[GenerateResult]):
                         gen_metadata.get("credits_used", 0),
                         gen_metadata.get("credits_limit")
                     )
-            except ProviderFailureError as e:
+            except RuntimeError as e:
                 self.call_from_thread(self._update_stage, 2, "error", str(e))
                 self._cleanup_and_exit(provider_manager, marble, GenerateResult(
                     success=False,
-                    error=f"Provider {e.provider} failed: {e.original_error}",
+                    error=f"Generation failed: {e}",
                     provider=gen_name,
                 ))
                 return
