@@ -52,7 +52,8 @@ class FluxGenerator(ImageGenerator):
         prompt: str,
         seed: Optional[int] = None,
         is_panorama: bool = True,
-        aspect_ratio: str = "21:9",
+        width: int = 1920,
+        height: int = 1080,
     ) -> bytes:
         """
         Generate an image from a prompt.
@@ -61,7 +62,8 @@ class FluxGenerator(ImageGenerator):
             prompt: The generation prompt
             seed: Optional random seed for reproducibility
             is_panorama: Whether to generate panoramic format (adds panoramic keywords)
-            aspect_ratio: Aspect ratio for the image (default "21:9" for panoramic)
+            width: Output width in pixels (must be multiple of 16, default 1920)
+            height: Output height in pixels (must be multiple of 16, default 1080)
 
         Returns:
             Image bytes (JPEG format)
@@ -75,9 +77,10 @@ class FluxGenerator(ImageGenerator):
         # Step 1: Submit generation request
         request_data = {
             "prompt": full_prompt,
+            "width": width,
+            "height": height,
             "output_format": "jpeg",
             "safety_tolerance": 2,
-            "aspect_ratio": aspect_ratio,
         }
         if seed is not None:
             request_data["seed"] = seed
