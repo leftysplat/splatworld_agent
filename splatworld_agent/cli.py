@@ -375,6 +375,7 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
 
     # Initialize ProviderManager
     api_keys = {
+        "bfl": config.api_keys.bfl,
         "nano": config.api_keys.nano or config.api_keys.google,
         "google": config.api_keys.google,
     }
@@ -884,6 +885,7 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
 
         # Initialize ProviderManager
         api_keys = {
+            "bfl": config.api_keys.bfl,
             "nano": config.api_keys.nano or config.api_keys.google,
             "google": config.api_keys.google,
         }
@@ -1772,6 +1774,7 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
 
     # Initialize ProviderManager for image generation with failover support
     api_keys = {
+        "bfl": config.api_keys.bfl,
         "nano": config.api_keys.nano or config.api_keys.google,
         "google": config.api_keys.google,
     }
@@ -3421,6 +3424,7 @@ def _run_direct_simple(
 
     # Initialize API clients
     api_keys = {
+        "bfl": config.api_keys.bfl,
         "nano": config.api_keys.nano or config.api_keys.google,
         "google": config.api_keys.google,
     }
