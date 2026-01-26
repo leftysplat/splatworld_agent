@@ -27,7 +27,7 @@ from splatworld_agent.profile import ProfileManager
 from splatworld_agent.models import TasteProfile, Feedback, Generation, PromptHistoryEntry, ExplorationMode
 from splatworld_agent.learning import LearningEngine, enhance_prompt, PromptAdapter
 from splatworld_agent.display import display
-from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
+from splatworld_agent.generators.manager import ProviderManager
 from splatworld_agent.tui import GenerateTUI, GenerateResult
 
 console = Console()
@@ -395,9 +395,11 @@ def generate(prompt: tuple, seed: int, no_enhance: bool, no_splat: bool, generat
             try:
                 image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt, seed=seed)
                 gen_name = gen_metadata["provider"]  # Track actual provider used
-            except ProviderFailureError as e:
-                console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
-                console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                # Optionally inform user about failover
+                if gen_metadata.get("failover_occurred"):
+                    console.print(f"[yellow]Note: Failed over to {gen_metadata['provider']}[/yellow]")
+            except RuntimeError as e:
+                console.print(f"\n[red]Generation failed: {e}[/red]")
                 provider_manager.close()
                 sys.exit(1)
 
@@ -907,9 +909,11 @@ def batch(prompt: tuple, count: int, cycles: int, generator: str, mode: str, inl
                     try:
                         image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt, seed=None)
                         actual_generator = gen_metadata["provider"]
-                    except ProviderFailureError as e:
-                        console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
-                        console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                        # Optionally inform user about failover
+                        if gen_metadata.get("failover_occurred"):
+                            console.print(f"[yellow]Note: Failed over to {gen_metadata['provider']} for image {i+1}[/yellow]")
+                    except RuntimeError as e:
+                        console.print(f"\n[red]Generation failed: {e}[/red]")
                         provider_manager.close()
                         sys.exit(1)
 
@@ -1850,11 +1854,11 @@ def train(args: tuple, count: int, generator: str, no_rate: bool, single: bool, 
                         seed=training_state.get("seed") if training_state else None,
                     )
                     actual_generator = gen_metadata["provider"]
-                except ProviderFailureError as e:
-                    # IGEN-02: Signal failure with available fallback
-                    # For now, report error and suggest manual switch. Plan 03 adds user consent flow.
-                    console.print(f"\n[red]Provider {e.provider} failed: {e.original_error}[/red]")
-                    console.print(f"[yellow]Fallback to {e.fallback_available} available. Use --generator {e.fallback_available} to switch.[/yellow]")
+                    # Optionally inform user about failover
+                    if gen_metadata.get("failover_occurred"):
+                        console.print(f"[yellow]Note: Failed over to {gen_metadata['provider']}[/yellow]")
+                except RuntimeError as e:
+                    console.print(f"\n[red]Generation failed: {e}[/red]")
                     cancelled = True
                     break
                 except Exception as gen_error:
@@ -3397,7 +3401,7 @@ def _run_direct_simple(
     from datetime import datetime
     import uuid
 
-    from splatworld_agent.generators.manager import ProviderManager, ProviderFailureError
+    from splatworld_agent.generators.manager import ProviderManager
     from splatworld_agent.learning import enhance_prompt, PromptAdapter
     from splatworld_agent.core.marble import MarbleClient, MarbleTimeoutError, MarbleConversionError
     from splatworld_agent.tui.results import GenerateResult
@@ -3454,13 +3458,13 @@ def _run_direct_simple(
             print_stage_progress("Generate", "🖼️ ", 30, "generating...")
             image_bytes, gen_metadata = provider_manager.generate(enhanced_prompt)
             gen_name = gen_metadata["provider"]
-        except ProviderFailureError as e:
-            print_error(f"Provider {e.provider} failed: {e.original_error}")
+        except RuntimeError as e:
+            print_error(f"Generation failed: {e}")
             provider_manager.close()
             marble.close()
             return GenerateResult(
                 success=False,
-                error=f"Provider {e.provider} failed: {e.original_error}",
+                error=f"Generation failed: {e}",
                 provider=gen_name,
             )
 
