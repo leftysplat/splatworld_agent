@@ -1,4 +1,4 @@
-# SplatWorld Agent
+# Splatworld Agent
 
 A Claude Code plugin for iterative 3D Gaussian splat generation with taste learning. The agent learns your aesthetic preferences over time and applies them to future generations.
 
